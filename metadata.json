@@ -1,0 +1,6 @@
+{
+  "name": "GoaMate – Car & Bike Rental in Goa",
+  "description": "Official car, bike, and scooter rental service in Margao and across Goa. Transparent pricing, instant WhatsApp assistance, and seamless online booking.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
