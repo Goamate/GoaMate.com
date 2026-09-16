@@ -1,5 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { Booking, Vehicle, Vendor, BookingDocument } from '../src/types';
+import { Booking, Vehicle, Vendor, BookingDocument, Invoice } from '../src/types';
 
 // Detect Supabase environment variables
 const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '';
@@ -59,6 +59,7 @@ export interface SupabaseSyncState {
   totalBookingsInDb: number;
   totalVehiclesInDb: number;
   totalVendorsInDb: number;
+  totalInvoicesInDb: number;
 }
 
 const syncState: SupabaseSyncState = {
@@ -70,6 +71,7 @@ const syncState: SupabaseSyncState = {
   totalBookingsInDb: 0,
   totalVehiclesInDb: 0,
   totalVendorsInDb: 0,
+  totalInvoicesInDb: 0,
 };
 
 export function getSyncState(): SupabaseSyncState {
@@ -376,6 +378,18 @@ export async function refreshSupabaseMetrics(): Promise<SupabaseSyncState> {
       syncState.totalVendorsInDb = venCount;
     }
 
+    // Count invoices
+    try {
+      const { count: invCount, error: invErr } = await supabase
+        .from('invoices')
+        .select('*', { count: 'exact', head: true });
+      if (!invErr && invCount !== null) {
+        syncState.totalInvoicesInDb = invCount;
+      }
+    } catch {
+      // Table might not exist yet before migration
+    }
+
     // Test write permission via dry-run probe
     const { error: probeErr } = await supabase.from('bookings').insert([{}]);
     if (probeErr && (probeErr.code === '42501' || probeErr.message.includes('row-level security'))) {
@@ -408,6 +422,9 @@ export async function saveVendorToSupabase(vendor: Vendor): Promise<{ success: b
       status: vendor.status,
       notes: vendor.notes || null,
       created_at: vendor.createdAt,
+      is_deleted: vendor.isDeleted ?? false,
+      deleted_at: vendor.deletedAt || null,
+      deleted_by: vendor.deletedBy || null,
     };
 
     const { error } = await supabase.from('vendors').upsert(vendorRow, { onConflict: 'id' });
@@ -438,6 +455,9 @@ export async function fetchVendorsFromSupabase(): Promise<{ success: boolean; ve
       notes: row.notes || undefined,
       vehicleCount: 0,
       createdAt: row.created_at,
+      isDeleted: row.is_deleted,
+      deletedAt: row.deleted_at,
+      deletedBy: row.deleted_by,
     }));
 
     return { success: true, vendors: list };
@@ -476,6 +496,9 @@ export async function saveVehicleToSupabase(vehicle: Vehicle): Promise<{ success
       is_active: vehicle.isActive,
       created_at: vehicle.createdAt,
       updated_at: vehicle.updatedAt,
+      is_deleted: vehicle.isDeleted ?? false,
+      deleted_at: vehicle.deletedAt || null,
+      deleted_by: vehicle.deletedBy || null,
     };
 
     const { error } = await supabase.from('vehicles').upsert(row, { onConflict: 'id' });
@@ -511,6 +534,10 @@ export async function fetchVehiclesFromSupabase(): Promise<{ success: boolean; v
       securityDeposit: row.security_deposit,
       fuelType: row.fuel_type,
       transmission: row.transmission,
+      seats: row.seats || (row.category === 'car' ? 5 : 2),
+      description: row.description || '',
+      fuelPolicy: row.fuel_policy || 'same_to_same',
+      mileagePolicy: row.mileage_policy || 'unlimited',
       coverImage: row.cover_image,
       location: row.location,
       pickupOptions: row.pickup_options,
@@ -519,6 +546,9 @@ export async function fetchVehiclesFromSupabase(): Promise<{ success: boolean; v
       isActive: row.is_active,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
+      isDeleted: row.is_deleted,
+      deletedAt: row.deleted_at,
+      deletedBy: row.deleted_by,
       images: [],
     }));
 
@@ -608,5 +638,157 @@ export async function seedSupabaseFleet(vehicles: Vehicle[], vendors: Vendor[]):
     };
   } catch (err: any) {
     return { success: false, insertedVehicles: 0, insertedVendors: 0, error: err.message };
+  }
+}
+
+/**
+ * Maps an internal Invoice object to public.invoices schema in Supabase
+ */
+export function mapInvoiceToRow(inv: Invoice) {
+  return {
+    id: inv.id,
+    invoice_number: inv.invoiceNumber,
+    booking_id: inv.bookingId,
+    booking_reference: inv.bookingReference,
+    vendor_id: inv.vendorId,
+    customer_id: inv.customerId || null,
+    vehicle_id: inv.vehicleId || null,
+    invoice_year: inv.invoiceYear,
+    invoice_date: inv.invoiceDate,
+    subtotal_amount: inv.subtotalAmount,
+    discount_amount: inv.discountAmount || 0,
+    extra_charges: inv.extraCharges || 0,
+    tax_rate_percent: inv.taxRatePercent || 0,
+    tax_amount: inv.taxAmount || 0,
+    security_deposit: inv.securityDeposit || 0,
+    total_amount: inv.totalAmount,
+    amount_paid: inv.amountPaid || 0,
+    amount_due: inv.amountDue,
+    payment_status: inv.paymentStatus,
+    payment_method: inv.paymentMethod,
+    invoice_status: inv.invoiceStatus,
+    items: inv.items || [],
+    customer_details: inv.customerDetails || {},
+    vehicle_details: inv.vehicleDetails || {},
+    rental_details: inv.rentalDetails || {},
+    documents: inv.documents || [],
+    customer_pdf_path: inv.customerPdfPath || null,
+    internal_pdf_path: inv.internalPdfPath || null,
+    notes: inv.notes || null,
+    issued_at: inv.issuedAt || null,
+    created_by: inv.createdBy || null,
+    created_at: inv.createdAt,
+    updated_at: inv.updatedAt,
+  };
+}
+
+/**
+ * Maps a public.invoices Supabase row to internal Invoice object
+ */
+export function mapRowToInvoice(row: any): Invoice {
+  return {
+    id: row.id,
+    invoiceNumber: row.invoice_number,
+    bookingId: row.booking_id,
+    bookingReference: row.booking_reference,
+    vendorId: row.vendor_id,
+    customerId: row.customer_id || undefined,
+    vehicleId: row.vehicle_id || undefined,
+    invoiceYear: row.invoice_year,
+    invoiceDate: row.invoice_date,
+    subtotalAmount: Number(row.subtotal_amount) || 0,
+    discountAmount: Number(row.discount_amount) || 0,
+    extraCharges: Number(row.extra_charges) || 0,
+    taxRatePercent: Number(row.tax_rate_percent) || 0,
+    taxAmount: Number(row.tax_amount) || 0,
+    securityDeposit: Number(row.security_deposit) || 0,
+    totalAmount: Number(row.total_amount) || 0,
+    amountPaid: Number(row.amount_paid) || 0,
+    amountDue: Number(row.amount_due) || 0,
+    paymentStatus: row.payment_status || 'pending',
+    paymentMethod: row.payment_method || 'Cash',
+    invoiceStatus: row.invoice_status || 'draft',
+    items: row.items || [],
+    customerDetails: row.customer_details || { name: '', phone: '', email: '' },
+    vehicleDetails: row.vehicle_details || { type: '', name: '', brand: '', model: '' },
+    rentalDetails: row.rental_details || { pickupLocation: '', dropoffLocation: '', pickupDatetime: '', returnDatetime: '', totalDurationDays: 1, dailyRate: 0 },
+    documents: row.documents || [],
+    customerPdfPath: row.customer_pdf_path || undefined,
+    internalPdfPath: row.internal_pdf_path || undefined,
+    notes: row.notes || undefined,
+    issuedAt: row.issued_at || undefined,
+    createdBy: row.created_by || undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+/**
+ * Saves or updates an Invoice in Supabase
+ */
+export async function saveInvoiceToSupabase(invoice: Invoice): Promise<{ success: boolean; error?: string }> {
+  if (!supabase) return { success: false, error: 'Supabase not configured' };
+
+  try {
+    const row = mapInvoiceToRow(invoice);
+    const { error } = await supabase.from('invoices').upsert(row, { onConflict: 'id' });
+    if (error) {
+      console.warn('⚠️ Supabase saveInvoice error:', error.message);
+      return { success: false, error: error.message };
+    }
+    console.log(`✅ Successfully saved invoice ${invoice.invoiceNumber} to Supabase invoices table.`);
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Updates an existing invoice in Supabase
+ */
+export async function updateInvoiceInSupabase(
+  invoiceId: string,
+  updates: Partial<Invoice>
+): Promise<{ success: boolean; error?: string }> {
+  if (!supabase) return { success: false, error: 'Supabase not configured' };
+
+  try {
+    const updatePayload: Record<string, any> = {
+      updated_at: new Date().toISOString(),
+    };
+    if (updates.paymentStatus !== undefined) updatePayload.payment_status = updates.paymentStatus;
+    if (updates.paymentMethod !== undefined) updatePayload.payment_method = updates.paymentMethod;
+    if (updates.invoiceStatus !== undefined) updatePayload.invoice_status = updates.invoiceStatus;
+    if (updates.amountPaid !== undefined) updatePayload.amount_paid = updates.amountPaid;
+    if (updates.amountDue !== undefined) updatePayload.amount_due = updates.amountDue;
+    if (updates.notes !== undefined) updatePayload.notes = updates.notes;
+    if (updates.customerPdfPath !== undefined) updatePayload.customer_pdf_path = updates.customerPdfPath;
+    if (updates.internalPdfPath !== undefined) updatePayload.internal_pdf_path = updates.internalPdfPath;
+
+    const { error } = await supabase.from('invoices').update(updatePayload).eq('id', invoiceId);
+    if (error) throw error;
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Fetches all invoices from Supabase
+ */
+export async function fetchInvoicesFromSupabase(): Promise<{ success: boolean; invoices: Invoice[]; error?: string }> {
+  if (!supabase) return { success: false, invoices: [], error: 'Supabase not configured' };
+
+  try {
+    const { data: rows, error } = await supabase
+      .from('invoices')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+
+    const list: Invoice[] = (rows || []).map(mapRowToInvoice);
+    return { success: true, invoices: list };
+  } catch (err: any) {
+    return { success: false, invoices: [], error: err.message };
   }
 }

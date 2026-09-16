@@ -25,12 +25,14 @@ import {
   AlertTriangle,
   RefreshCw,
   FileText,
+  Power,
 } from 'lucide-react';
 import { api } from '../../services/api';
-import { Vehicle, Booking, BookingFormLink, Vendor } from '../../types';
+import { Vehicle, Booking, BookingFormLink, Vendor, Invoice } from '../../types';
 import { StatusBadge } from '../ui/StatusBadge';
 import { getWhatsAppLink } from '../../lib/constants';
 import { InvoiceModal } from './InvoiceModal';
+import { InvoiceListView } from './InvoiceListView';
 
 interface VendorPortalProps {
   onClose: () => void;
@@ -47,7 +49,7 @@ export const VendorPortal: React.FC<VendorPortalProps> = ({ onClose, onOpenDirec
   const [token, setToken] = useState<string | null>(() => localStorage.getItem('goamate_vendor_token'));
   const [vendor, setVendor] = useState<Vendor | null>(null);
   const [stats, setStats] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState<'overview' | 'vehicles' | 'bookings' | 'links'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'vehicles' | 'bookings' | 'links' | 'invoices'>('overview');
 
   // Login & Register state
   const [isRegistering, setIsRegistering] = useState<boolean>(false);
@@ -68,6 +70,7 @@ export const VendorPortal: React.FC<VendorPortalProps> = ({ onClose, onOpenDirec
   const [vehiclesList, setVehiclesList] = useState<Vehicle[]>([]);
   const [bookingsList, setBookingsList] = useState<Booking[]>([]);
   const [linksList, setLinksList] = useState<BookingFormLink[]>([]);
+  const [invoicesList, setInvoicesList] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -76,7 +79,8 @@ export const VendorPortal: React.FC<VendorPortalProps> = ({ onClose, onOpenDirec
   const [showAddVehicleModal, setShowAddVehicleModal] = useState<boolean>(false);
   const [showCreateLinkModal, setShowCreateLinkModal] = useState<boolean>(false);
   const [viewingDocBooking, setViewingDocBooking] = useState<Booking | null>(null);
-  const [viewingInvoice, setViewingInvoice] = useState<Booking | null>(null);
+  const [viewingInvoiceBooking, setViewingInvoiceBooking] = useState<Booking | null>(null);
+  const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [copiedLinkId, setCopiedLinkId] = useState<string | null>(null);
 
   // Add Vehicle Form State
@@ -115,14 +119,16 @@ export const VendorPortal: React.FC<VendorPortalProps> = ({ onClose, onOpenDirec
       setStats(meRes.stats);
 
       if (meRes.vendor.status === 'approved') {
-        const [vList, bList, lList] = await Promise.all([
+        const [vList, bList, lList, invList] = await Promise.all([
           api.getVendorVehicles(sessToken),
           api.getVendorBookings(sessToken),
           api.getVendorDirectLinks(sessToken),
+          api.getVendorInvoices(sessToken).catch(() => []),
         ]);
         setVehiclesList(vList);
         setBookingsList(bList);
         setLinksList(lList);
+        setInvoicesList(invList);
       }
     } catch (err: any) {
       if (err.message.includes('suspended') || err.message.includes('pending')) {
@@ -195,6 +201,25 @@ export const VendorPortal: React.FC<VendorPortalProps> = ({ onClose, onOpenDirec
       await loadVendorData(token);
     } catch (err: any) {
       setActionError(err.message || 'Failed to create vehicle');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleToggleVehicleAvailability = async (id: string, newStatus: boolean) => {
+    if (!token) return;
+    try {
+      setLoading(true);
+      const res = await api.updateVendorVehicleAvailability(token, id, newStatus);
+      
+      // Update local state directly to be responsive
+      setVehiclesList(prev => prev.map(v => v.id === id ? { ...v, isActive: res.vehicle.isActive } : v));
+      
+      setSuccessMsg(`Vehicle marked as ${newStatus ? 'available' : 'unavailable'}.`);
+      setTimeout(() => setSuccessMsg(null), 3000);
+    } catch (err: any) {
+      setActionError(err.message || 'Failed to update vehicle availability');
+      setTimeout(() => setActionError(null), 3000);
     } finally {
       setLoading(false);
     }
@@ -554,6 +579,7 @@ export const VendorPortal: React.FC<VendorPortalProps> = ({ onClose, onOpenDirec
             { id: 'vehicles', label: `My Fleet (${vehiclesList.length})` },
             { id: 'bookings', label: `Assigned Bookings (${bookingsList.length})` },
             { id: 'links', label: `Direct Customer Links (${linksList.length})` },
+            { id: 'invoices', label: `Invoices (${invoicesList.length})` },
           ].map(tab => (
             <button
               key={tab.id}
@@ -766,7 +792,16 @@ export const VendorPortal: React.FC<VendorPortalProps> = ({ onClose, onOpenDirec
                     </div>
 
                     <div className="p-4 pt-0 border-t border-slate-100 mt-2 flex items-center justify-between text-xs">
-                      <span className="text-slate-400 text-[11px]">ID: {v.id}</span>
+                      <div className="flex items-center gap-3">
+                        <span className="text-slate-400 text-[11px]">ID: {v.id}</span>
+                        <button
+                          onClick={() => handleToggleVehicleAvailability(v.id, !v.isActive)}
+                          className={`font-bold hover:underline flex items-center gap-1 ${v.isActive ? 'text-amber-600' : 'text-emerald-600'}`}
+                        >
+                          <Power className="w-3.5 h-3.5" />
+                          <span>{v.isActive ? 'Mark Unavailable' : 'Mark Available'}</span>
+                        </button>
+                      </div>
                       <button
                         onClick={() => {
                           setNewLinkData({ ...newLinkData, vehicleId: v.id });
@@ -860,13 +895,40 @@ export const VendorPortal: React.FC<VendorPortalProps> = ({ onClose, onOpenDirec
                             <span>Call</span>
                           </a>
 
-                          <button
-                            onClick={() => setViewingInvoice(b)}
-                            className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-lg text-xs font-bold flex items-center gap-1.5"
-                          >
-                            <FileText className="w-3.5 h-3.5" />
-                            <span>Invoice</span>
-                          </button>
+                          {(() => {
+                            const matchingInvoice = invoicesList.find(
+                              inv => inv.bookingId === b.id || inv.bookingReference === b.referenceNumber
+                            );
+                            if (matchingInvoice) {
+                              return (
+                                <button
+                                  onClick={() => {
+                                    setSelectedInvoice(matchingInvoice);
+                                    setViewingInvoiceBooking(b);
+                                  }}
+                                  className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-xs"
+                                >
+                                  <FileText className="w-3.5 h-3.5 text-emerald-600" />
+                                  <span>{matchingInvoice.invoiceNumber}</span>
+                                  <span className="px-1.5 py-0.5 rounded text-[10px] bg-emerald-200 text-emerald-900 font-extrabold uppercase">
+                                    {matchingInvoice.paymentStatus}
+                                  </span>
+                                </button>
+                              );
+                            }
+                            return (
+                              <button
+                                onClick={() => {
+                                  setSelectedInvoice(null);
+                                  setViewingInvoiceBooking(b);
+                                }}
+                                className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-xs"
+                              >
+                                <FileText className="w-3.5 h-3.5 text-emerald-400" />
+                                <span>Generate Invoice</span>
+                              </button>
+                            );
+                          })()}
                         </div>
 
                         {/* Status dropdown */}
@@ -971,6 +1033,60 @@ export const VendorPortal: React.FC<VendorPortalProps> = ({ onClose, onOpenDirec
                   })}
                 </div>
               )}
+            </div>
+          )}
+
+          {/* ================= TAB 5: INVOICES ================= */}
+          {activeTab === 'invoices' && (
+            <div className="space-y-4">
+              <InvoiceListView
+                invoices={invoicesList}
+                onViewInvoice={(inv) => {
+                  const matchingBooking = bookingsList.find(
+                    b => b.id === inv.bookingId || b.referenceNumber === inv.bookingReference
+                  ) || ({
+                    id: inv.bookingId,
+                    referenceNumber: inv.bookingReference,
+                    vehicleId: inv.vehicleId,
+                    vendorId: inv.vendorId,
+                    customerName: inv.customerDetails?.name || 'Customer',
+                    customerPhone: inv.customerDetails?.phone || '',
+                    customerEmail: inv.customerDetails?.email || '',
+                    customerWhatsapp: inv.customerDetails?.whatsapp || '',
+                    hotelOrDeliveryAddress: inv.customerDetails?.address || '',
+                    pickupDatetime: inv.rentalDetails?.pickupDatetime || new Date().toISOString(),
+                    returnDatetime: inv.rentalDetails?.returnDatetime || new Date().toISOString(),
+                    pickupLocation: inv.rentalDetails?.pickupLocation || 'Margao Hub',
+                    dropoffLocation: inv.rentalDetails?.dropoffLocation || 'Margao Hub',
+                    daysCount: inv.rentalDetails?.totalDurationDays || 1,
+                    dailyRate: inv.rentalDetails?.dailyRate || 0,
+                    subtotalAmount: inv.subtotalAmount,
+                    deliveryFee: inv.extraCharges,
+                    securityDeposit: inv.securityDeposit,
+                    totalEstimatedAmount: inv.totalAmount,
+                    status: 'confirmed',
+                    documents: (inv.documents || []).map(d => ({
+                      id: d.id,
+                      bookingId: inv.bookingId,
+                      docType: d.docType,
+                      idProofType: d.idProofType,
+                      storagePath: d.storagePath,
+                      fileName: d.fileName,
+                      fileSizeBytes: 20000,
+                      mimeType: 'image/svg+xml',
+                      uploadedAt: inv.createdAt,
+                      previewUrl: d.previewUrl,
+                    })),
+                    createdAt: inv.createdAt,
+                  } as Booking);
+
+                  setSelectedInvoice(inv);
+                  setViewingInvoiceBooking(matchingBooking);
+                }}
+                onRefresh={() => token && loadVendorData(token)}
+                isLoading={loading}
+                userRole="vendor"
+              />
             </div>
           )}
         </div>
@@ -1278,11 +1394,24 @@ export const VendorPortal: React.FC<VendorPortalProps> = ({ onClose, onOpenDirec
           </div>
         )}
 
-        {/* Modal: View Invoice */}
-        {viewingInvoice && (
+        {/* Modal: View / Generate Invoice */}
+        {viewingInvoiceBooking && (
           <InvoiceModal
-            booking={viewingInvoice}
-            onClose={() => setViewingInvoice(null)}
+            booking={viewingInvoiceBooking}
+            invoice={selectedInvoice}
+            vendorToken={token}
+            onClose={() => {
+              setViewingInvoiceBooking(null);
+              setSelectedInvoice(null);
+            }}
+            onInvoiceGenerated={(newInv) => {
+              setInvoicesList(prev => [newInv, ...prev.filter(i => i.id !== newInv.id)]);
+              setSelectedInvoice(newInv);
+            }}
+            onInvoiceUpdated={(updInv) => {
+              setInvoicesList(prev => prev.map(i => (i.id === updInv.id ? updInv : i)));
+              setSelectedInvoice(updInv);
+            }}
           />
         )}
       </div>

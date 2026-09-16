@@ -119,6 +119,43 @@ CREATE TABLE public.site_settings (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- 7. Create Invoices Table (GoaMate Production Billing Engine)
+CREATE TABLE IF NOT EXISTS public.invoices (
+  id TEXT PRIMARY KEY,
+  invoice_number TEXT UNIQUE NOT NULL,
+  booking_id TEXT REFERENCES public.bookings(id) ON DELETE CASCADE,
+  booking_reference TEXT NOT NULL,
+  vendor_id TEXT REFERENCES public.vendors(id) ON DELETE SET NULL,
+  customer_id TEXT,
+  vehicle_id TEXT REFERENCES public.vehicles(id) ON DELETE SET NULL,
+  invoice_year INT NOT NULL,
+  invoice_date TIMESTAMPTZ NOT NULL DEFAULT now(),
+  subtotal_amount NUMERIC(10, 2) NOT NULL,
+  discount_amount NUMERIC(10, 2) NOT NULL DEFAULT 0,
+  extra_charges NUMERIC(10, 2) NOT NULL DEFAULT 0,
+  tax_rate_percent NUMERIC(5, 2) NOT NULL DEFAULT 0,
+  tax_amount NUMERIC(10, 2) NOT NULL DEFAULT 0,
+  security_deposit NUMERIC(10, 2) NOT NULL DEFAULT 0,
+  total_amount NUMERIC(10, 2) NOT NULL,
+  amount_paid NUMERIC(10, 2) NOT NULL DEFAULT 0,
+  amount_due NUMERIC(10, 2) NOT NULL,
+  payment_status TEXT NOT NULL DEFAULT 'pending', -- 'pending', 'partially_paid', 'paid', 'refunded', 'cancelled'
+  payment_method TEXT NOT NULL DEFAULT 'Cash',    -- 'Cash', 'UPI', 'Card', 'Bank Transfer', 'Online Payment', 'Other'
+  invoice_status TEXT NOT NULL DEFAULT 'draft',   -- 'draft', 'issued', 'paid', 'partially_paid', 'cancelled', 'refunded'
+  items JSONB NOT NULL DEFAULT '[]'::jsonb,
+  customer_details JSONB NOT NULL DEFAULT '{}'::jsonb,
+  vehicle_details JSONB NOT NULL DEFAULT '{}'::jsonb,
+  rental_details JSONB NOT NULL DEFAULT '{}'::jsonb,
+  documents JSONB DEFAULT '[]'::jsonb,
+  customer_pdf_path TEXT,
+  internal_pdf_path TEXT,
+  notes TEXT,
+  issued_at TIMESTAMPTZ,
+  created_by TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- ==============================================================================
 -- Indexes for Fast Lookups
 -- ==============================================================================
@@ -129,6 +166,10 @@ CREATE INDEX IF NOT EXISTS idx_bookings_vehicle_id ON public.bookings(vehicle_id
 CREATE INDEX IF NOT EXISTS idx_vehicles_category ON public.vehicles(category);
 CREATE INDEX IF NOT EXISTS idx_vehicles_is_active ON public.vehicles(is_active);
 CREATE INDEX IF NOT EXISTS idx_booking_documents_booking ON public.booking_documents(booking_id);
+CREATE INDEX IF NOT EXISTS idx_invoices_number ON public.invoices(invoice_number);
+CREATE INDEX IF NOT EXISTS idx_invoices_booking_id ON public.invoices(booking_id);
+CREATE INDEX IF NOT EXISTS idx_invoices_vendor_id ON public.invoices(vendor_id);
+CREATE INDEX IF NOT EXISTS idx_invoices_payment_status ON public.invoices(payment_status);
 
 -- ==============================================================================
 -- Row-Level Security (RLS) Setup
@@ -139,6 +180,7 @@ ALTER TABLE public.bookings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.booking_documents ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.service_areas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.site_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.invoices ENABLE ROW LEVEL SECURITY;
 
 -- Vendors Policies
 DROP POLICY IF EXISTS "Allow public vendors select" ON public.vendors;
@@ -178,6 +220,25 @@ CREATE POLICY "Allow public service_areas all" ON public.service_areas FOR ALL T
 -- Site Settings Policies
 DROP POLICY IF EXISTS "Allow public site_settings all" ON public.site_settings;
 CREATE POLICY "Allow public site_settings all" ON public.site_settings FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+-- Invoices Policies (Row-Level Security)
+DROP POLICY IF EXISTS "Allow public invoices select" ON public.invoices;
+DROP POLICY IF EXISTS "Allow public invoices insert" ON public.invoices;
+DROP POLICY IF EXISTS "Allow public invoices update" ON public.invoices;
+CREATE POLICY "Allow public invoices select" ON public.invoices FOR SELECT TO anon, authenticated USING (true);
+CREATE POLICY "Allow public invoices insert" ON public.invoices FOR INSERT TO anon, authenticated WITH CHECK (true);
+CREATE POLICY "Allow public invoices update" ON public.invoices FOR UPDATE TO anon, authenticated USING (true) WITH CHECK (true);
+
+-- ==============================================================================
+-- Storage Buckets Setup (Private & Secure for KYC & Invoices)
+-- ==============================================================================
+-- 1. Private bucket 'customer-documents' for customer driving licences & ID proofs
+-- 2. Private bucket 'invoices' for generated PDF copies
+INSERT INTO storage.buckets (id, name, public)
+VALUES 
+  ('customer-documents', 'customer-documents', false),
+  ('invoices', 'invoices', false)
+ON CONFLICT (id) DO NOTHING;
 
 
 -- ==============================================================================
@@ -460,3 +521,10 @@ VALUES
 ON CONFLICT (id) DO UPDATE SET
   settings = EXCLUDED.settings,
   updated_at = now();
+ALTER TABLE public.vendors ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE public.vendors ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+ALTER TABLE public.vendors ADD COLUMN IF NOT EXISTS deleted_by TEXT;
+
+ALTER TABLE public.vehicles ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE public.vehicles ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+ALTER TABLE public.vehicles ADD COLUMN IF NOT EXISTS deleted_by TEXT;

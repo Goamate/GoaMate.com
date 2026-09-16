@@ -1,6 +1,6 @@
 export type VehicleCategory = 'car' | 'bike' | 'scooter';
-export type VehicleStatus = 'draft' | 'pending_approval' | 'approved' | 'rejected' | 'archived';
-export type VendorStatus = 'pending' | 'approved' | 'rejected' | 'suspended' | 'archived';
+export type VehicleStatus = 'draft' | 'pending_approval' | 'approved' | 'rejected' | 'archived' | 'inactive';
+export type VendorStatus = 'pending' | 'approved' | 'rejected' | 'suspended' | 'archived' | 'inactive';
 export type BookingStatus = 'pending' | 'confirmed' | 'rejected' | 'cancelled' | 'completed';
 export type IdProofType = 'aadhaar' | 'passport' | 'voter_id' | 'driving_licence' | 'other';
 export type UserRole = 'super_admin' | 'vendor' | 'guest';
@@ -43,6 +43,9 @@ export interface Vehicle {
   coverImage?: string;
   createdAt?: string;
   updatedAt?: string;
+  isDeleted?: boolean;
+  deletedAt?: string;
+  deletedBy?: string;
 }
 
 export interface Vendor {
@@ -59,6 +62,9 @@ export interface Vendor {
   notes?: string;
   vehicleCount?: number;
   createdAt: string;
+  isDeleted?: boolean;
+  deletedAt?: string;
+  deletedBy?: string;
 }
 
 export interface BookingPriceBreakdown {
@@ -210,4 +216,97 @@ export interface GuestBookingSubmission {
   };
   consentAccepted: boolean;
   termsAccepted: boolean;
+}
+
+// -------------------------------------------------------------
+// INVOICE SYSTEM TYPES (GoaMate Production Grade)
+// -------------------------------------------------------------
+export type InvoicePaymentStatus = 'pending' | 'partially_paid' | 'paid' | 'refunded' | 'cancelled';
+export type InvoicePaymentMethod = 'Cash' | 'UPI' | 'Card' | 'Bank Transfer' | 'Online Payment' | 'Other';
+export type InvoiceStatus = 'draft' | 'issued' | 'paid' | 'partially_paid' | 'cancelled' | 'refunded';
+
+export interface InvoiceItem {
+  id: string;
+  description: string;
+  quantityOrDays: string;
+  rate: number;
+  amount: number;
+}
+
+export interface InvoiceCustomerDetails {
+  name: string;
+  address?: string;
+  phone: string;
+  email: string;
+  whatsapp?: string;
+  drivingLicenceNumber?: string;
+}
+
+export interface InvoiceVehicleDetails {
+  type: string; // e.g. "Car / Sedan", "Scooter / Bike"
+  name: string;
+  brand: string;
+  model: string;
+  registrationNumber?: string;
+  vendorName?: string;
+}
+
+export interface InvoiceRentalDetails {
+  pickupLocation: string;
+  dropoffLocation: string;
+  pickupDatetime: string;
+  returnDatetime: string;
+  totalDurationDays: number;
+  dailyRate: number;
+}
+
+export interface InvoiceDocumentAppendixItem {
+  id: string;
+  docType: 'driving_licence_front' | 'driving_licence_back' | 'id_proof_front' | 'id_proof_back';
+  title: string;
+  idProofType?: string;
+  previewUrl?: string;
+  storagePath?: string;
+  fileName?: string;
+}
+
+export interface Invoice {
+  id: string;
+  invoiceNumber: string; // e.g. GM-INV-2026-000125
+  bookingId: string;
+  bookingReference: string;
+  vendorId: string;
+  customerId?: string;
+  vehicleId?: string;
+  invoiceYear: number;
+  invoiceDate: string; // ISO date
+  
+  // Financial breakdown
+  subtotalAmount: number;
+  discountAmount: number;
+  extraCharges: number;
+  taxRatePercent: number;
+  taxAmount: number;
+  securityDeposit: number; // Refundable deposit kept distinct from rental revenue
+  totalAmount: number;
+  amountPaid: number;
+  amountDue: number;
+
+  paymentStatus: InvoicePaymentStatus;
+  paymentMethod: InvoicePaymentMethod;
+  invoiceStatus: InvoiceStatus;
+
+  items: InvoiceItem[];
+  customerDetails: InvoiceCustomerDetails;
+  vehicleDetails: InvoiceVehicleDetails;
+  rentalDetails: InvoiceRentalDetails;
+  documents?: InvoiceDocumentAppendixItem[]; // For internal copy only
+
+  customerPdfPath?: string;
+  internalPdfPath?: string;
+  notes?: string;
+  issuedAt?: string;
+  createdBy?: string;
+  createdAt: string;
+  updatedAt: string;
 }

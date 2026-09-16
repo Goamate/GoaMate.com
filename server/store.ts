@@ -12,6 +12,7 @@ import {
   BookingStatus,
   VendorStatus,
   VehicleStatus,
+  Invoice,
 } from '../src/types';
 import { INITIAL_SERVICE_AREAS } from '../src/lib/constants';
 
@@ -313,6 +314,7 @@ export const bookingDocuments: BookingDocument[] = [];
 export const bookingFormLinks: BookingFormLink[] = [];
 export const serviceAreas: ServiceArea[] = [...INITIAL_SERVICE_AREAS];
 export const auditLogs: AuditLog[] = [];
+export const invoices: Invoice[] = [];
 
 // Helper to log audit events
 export function recordAuditLog(log: Omit<AuditLog, 'id' | 'createdAt'>) {
@@ -332,6 +334,27 @@ export function generateBookingReference(): string {
   const year = new Date().getFullYear();
   const randomPart = Math.floor(1000 + Math.random() * 9000);
   return `GM-${year}-${randomPart}`;
+}
+
+// Generate sequential, unique invoice number: GM-INV-YYYY-XXXXXX
+export function generateInvoiceNumber(year?: number): string {
+  const invYear = year || new Date().getFullYear();
+  const prefix = `GM-INV-${invYear}-`;
+  
+  // Find highest current sequence number for this year
+  let maxSeq = 0;
+  for (const inv of invoices) {
+    if (inv.invoiceNumber && inv.invoiceNumber.startsWith(prefix)) {
+      const seqStr = inv.invoiceNumber.replace(prefix, '');
+      const parsed = parseInt(seqStr, 10);
+      if (!isNaN(parsed) && parsed > maxSeq) {
+        maxSeq = parsed;
+      }
+    }
+  }
+  
+  const nextSeq = maxSeq + 1;
+  return `${prefix}${String(nextSeq).padStart(6, '0')}`;
 }
 
 // SHA-256 hash helper

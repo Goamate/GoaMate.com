@@ -179,3 +179,46 @@ CREATE TABLE IF NOT EXISTS audit_logs (
   ip_address VARCHAR(100),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS invoices (
+  id VARCHAR(255) PRIMARY KEY,
+  invoice_number VARCHAR(100) UNIQUE NOT NULL,
+  booking_id VARCHAR(255) REFERENCES bookings(id) ON DELETE CASCADE,
+  booking_reference VARCHAR(100) NOT NULL,
+  vendor_id VARCHAR(255) REFERENCES vendors(id) ON DELETE SET NULL,
+  customer_id VARCHAR(255),
+  vehicle_id VARCHAR(255) REFERENCES vehicles(id) ON DELETE SET NULL,
+  invoice_year INTEGER NOT NULL,
+  invoice_date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  subtotal_amount DECIMAL(10, 2) NOT NULL,
+  discount_amount DECIMAL(10, 2) NOT NULL DEFAULT 0,
+  extra_charges DECIMAL(10, 2) NOT NULL DEFAULT 0,
+  tax_rate_percent DECIMAL(5, 2) NOT NULL DEFAULT 0,
+  tax_amount DECIMAL(10, 2) NOT NULL DEFAULT 0,
+  security_deposit DECIMAL(10, 2) NOT NULL DEFAULT 0,
+  total_amount DECIMAL(10, 2) NOT NULL,
+  amount_paid DECIMAL(10, 2) NOT NULL DEFAULT 0,
+  amount_due DECIMAL(10, 2) NOT NULL,
+  payment_status VARCHAR(50) NOT NULL DEFAULT 'pending',
+  payment_method VARCHAR(50) NOT NULL DEFAULT 'Cash',
+  invoice_status VARCHAR(50) NOT NULL DEFAULT 'draft',
+  items JSONB NOT NULL DEFAULT '[]'::jsonb,
+  customer_details JSONB NOT NULL DEFAULT '{}'::jsonb,
+  vehicle_details JSONB NOT NULL DEFAULT '{}'::jsonb,
+  rental_details JSONB NOT NULL DEFAULT '{}'::jsonb,
+  documents JSONB DEFAULT '[]'::jsonb,
+  customer_pdf_path TEXT,
+  internal_pdf_path TEXT,
+  notes TEXT,
+  issued_at TIMESTAMP WITH TIME ZONE,
+  created_by VARCHAR(255),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+ALTER TABLE vendors ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE vendors ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP WITH TIME ZONE;
+ALTER TABLE vendors ADD COLUMN IF NOT EXISTS deleted_by VARCHAR(255);
+
+ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP WITH TIME ZONE;
+ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS deleted_by VARCHAR(255);

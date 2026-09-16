@@ -24,8 +24,10 @@ import {
   X,
 } from 'lucide-react';
 import { api } from '../../services/api';
-import { Booking, Vehicle, Vendor, SiteSettings, AuditLog, BookingStatus } from '../../types';
+import { Booking, Vehicle, Vendor, SiteSettings, AuditLog, BookingStatus, Invoice } from '../../types';
 import { StatusBadge } from '../ui/StatusBadge';
+import { InvoiceModal } from '../vendor/InvoiceModal';
+import { InvoiceListView } from '../vendor/InvoiceListView';
 
 interface AdminPortalProps {
   onClose: () => void;
@@ -33,7 +35,7 @@ interface AdminPortalProps {
 
 export const AdminPortal: React.FC<AdminPortalProps> = ({ onClose }) => {
   const [token, setToken] = useState<string | null>(() => localStorage.getItem('goamate_admin_token') || 'goamate-admin-secret-2026');
-  const [activeTab, setActiveTab] = useState<'overview' | 'bookings' | 'vendors' | 'vehicles' | 'switches' | 'audit' | 'database'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'bookings' | 'vendors' | 'vehicles' | 'invoices' | 'switches' | 'audit' | 'database'>('overview');
 
   // Login state
   const [secretTokenInput, setSecretTokenInput] = useState<string>('goamate-admin-secret-2026');
@@ -47,6 +49,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onClose }) => {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [settings, setSettings] = useState<SiteSettings | null>(null);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
 
@@ -58,10 +61,15 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onClose }) => {
 
   // Modals & view targets
   const [viewingDocBooking, setViewingDocBooking] = useState<Booking | null>(null);
+  const [selectedInvoiceBooking, setSelectedInvoiceBooking] = useState<Booking | null>(null);
+  const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [rejectingVendor, setRejectingVendor] = useState<Vendor | null>(null);
+  const [removingVendor, setRemovingVendor] = useState<Vendor | null>(null);
   const [vendorRejectionReason, setVendorRejectionReason] = useState<string>('');
 
   const [rejectingVehicle, setRejectingVehicle] = useState<Vehicle | null>(null);
+  const [removingVehicle, setRemovingVehicle] = useState<Vehicle | null>(null);
+  const [removingReason, setRemovingReason] = useState<string>('');
   const [vehicleRejectionReason, setVehicleRejectionReason] = useState<string>('');
 
   // Fetch all admin data
@@ -69,7 +77,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onClose }) => {
     try {
       setLoading(true);
       setError(null);
-      const [st, bk, vn, vh, sett, logs, sb] = await Promise.all([
+      const [st, bk, vn, vh, sett, logs, sb, invs] = await Promise.all([
         api.getAdminStats(adminToken),
         api.getAdminBookings(adminToken),
         api.getAdminVendors(adminToken),
@@ -77,6 +85,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onClose }) => {
         api.getSettings(),
         api.getAdminAuditLogs(adminToken),
         api.getAdminSupabaseStatus(adminToken).catch(() => null),
+        api.getAdminInvoices(adminToken).catch(() => []),
       ]);
 
       setStats(st);
@@ -86,6 +95,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onClose }) => {
       setSettings(sett);
       setAuditLogs(logs);
       if (sb) setSupabaseInfo(sb);
+      setInvoices(invs);
     } catch (err: any) {
       setError(err.message || 'Failed to load admin data');
     } finally {
@@ -172,27 +182,28 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onClose }) => {
   };
 
   // Vendor status update (Approve, Suspend, Reactivate, Reject)
-  const handleVendorStatus = async (vendorId: string, newStatus: Vendor['status'], reason?: string) => {
+  const handleVendorStatus = async (vendorId: string, data: { status?: Vendor['status']; isDeleted?: boolean; reason?: string }) => {
     if (!token) return;
     try {
       setError(null);
-      await api.updateVendorStatus(vendorId, newStatus, reason, token);
-      setSuccessMsg(`Vendor status updated to ${newStatus}`);
+      await api.updateVendorStatus(vendorId, data, token);
+      setSuccessMsg(`Vendor updated successfully`);
       setRejectingVendor(null);
+      setRemovingVendor(null);
       await loadAdminData(token);
     } catch (err: any) {
       setError(err.message || 'Failed to update vendor');
     }
   };
 
-  // Vehicle status update (Approve, Reject, Toggle Active)
-  const handleVehicleStatus = async (vehicleId: string, data: { status?: Vehicle['status']; isActive?: boolean; rejectionReason?: string }) => {
+  const handleVehicleStatus = async (vehicleId: string, data: { status?: Vehicle['status']; isActive?: boolean; rejectionReason?: string; isDeleted?: boolean; reason?: string }) => {
     if (!token) return;
     try {
       setError(null);
       await api.updateVehicleStatus(vehicleId, data, token);
       setSuccessMsg(`Vehicle updated successfully`);
       setRejectingVehicle(null);
+      setRemovingVehicle(null);
       await loadAdminData(token);
     } catch (err: any) {
       setError(err.message || 'Failed to update vehicle');
@@ -332,6 +343,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onClose }) => {
             { id: 'bookings', label: `All Bookings (${bookings.length})` },
             { id: 'vendors', label: `Vendors (${vendors.length})` },
             { id: 'vehicles', label: `Fleet Catalog (${vehicles.length})` },
+            { id: 'invoices', label: `Invoices (${invoices.length})` },
             { id: 'database', label: `Supabase Sync (${supabaseInfo?.metrics?.totalBookingsInDb ?? 0} in DB)` },
             { id: 'switches', label: 'Operational Switches' },
             { id: 'audit', label: `Audit Log (${auditLogs.length})` },
@@ -558,10 +570,47 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onClose }) => {
                       </div>
                     </div>
 
-                    {/* Admin Status Transitions */}
+                    {/* Admin Status Transitions & Invoice */}
                     <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 text-xs">
-                      <span className="text-slate-500 font-semibold">Change Status (Enforces Concurrency):</span>
-                      <div className="flex flex-wrap gap-1.5">
+                      <div className="flex items-center gap-2">
+                        {(() => {
+                          const matchingInvoice = invoices.find(
+                            inv => inv.bookingId === b.id || inv.bookingReference === b.referenceNumber
+                          );
+                          if (matchingInvoice) {
+                            return (
+                              <button
+                                onClick={() => {
+                                  setSelectedInvoice(matchingInvoice);
+                                  setSelectedInvoiceBooking(b);
+                                }}
+                                className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold rounded-md flex items-center gap-1.5"
+                              >
+                                <FileText className="w-3.5 h-3.5 text-emerald-600" />
+                                <span>{matchingInvoice.invoiceNumber}</span>
+                                <span className="px-1 py-0.2 rounded text-[9px] bg-emerald-200 text-emerald-900 uppercase font-black">
+                                  {matchingInvoice.paymentStatus}
+                                </span>
+                              </button>
+                            );
+                          }
+                          return (
+                            <button
+                              onClick={() => {
+                                setSelectedInvoice(null);
+                                setSelectedInvoiceBooking(b);
+                              }}
+                              className="px-2.5 py-1 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-md flex items-center gap-1"
+                            >
+                              <FileText className="w-3.5 h-3.5 text-emerald-400" />
+                              <span>Invoice</span>
+                            </button>
+                          );
+                        })()}
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-1.5 ml-auto">
+                        <span className="text-slate-500 font-semibold mr-1">Status:</span>
                         <button
                           onClick={() => handleUpdateBookingStatus(b.id, 'confirmed')}
                           className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-md"
@@ -602,7 +651,13 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onClose }) => {
                     <div>
                       <div className="flex items-center gap-2">
                         <span className="font-extrabold text-slate-900 text-sm">{v.businessName}</span>
-                        <StatusBadge status={v.status} size="sm" />
+                        {v.isDeleted ? (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800">
+                            Removed
+                          </span>
+                        ) : (
+                          <StatusBadge status={v.status} size="sm" />
+                        )}
                       </div>
                       <p className="text-xs text-slate-600 mt-0.5">
                         Owner: <strong>{v.ownerName}</strong> &bull; {v.serviceLocation} &bull; {v.phone} &bull; {v.email}
@@ -616,7 +671,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onClose }) => {
                       {v.status === 'pending' && (
                         <>
                           <button
-                            onClick={() => handleVendorStatus(v.id, 'approved')}
+                            onClick={() => handleVendorStatus(v.id, { status: 'approved' })}
                             className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold"
                           >
                             Approve
@@ -630,21 +685,37 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onClose }) => {
                         </>
                       )}
 
-                      {v.status === 'approved' && (
+                      {v.status === 'approved' && !v.isDeleted && (
                         <button
-                          onClick={() => handleVendorStatus(v.id, 'suspended', 'Suspended by super admin')}
+                          onClick={() => handleVendorStatus(v.id, { status: 'suspended', reason: 'Suspended by super admin' })}
                           className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold"
                         >
-                          Suspend Vendor
+                          Suspend
                         </button>
                       )}
 
-                      {v.status === 'suspended' && (
+                      {v.status === 'suspended' && !v.isDeleted && (
                         <button
-                          onClick={() => handleVendorStatus(v.id, 'approved')}
+                          onClick={() => handleVendorStatus(v.id, { status: 'approved' })}
                           className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold"
                         >
                           Reactivate
+                        </button>
+                      )}
+                      
+                      {!v.isDeleted ? (
+                        <button
+                          onClick={() => setRemovingVendor(v)}
+                          className="px-3 py-1.5 bg-rose-50 text-rose-700 hover:bg-rose-100 rounded-lg text-xs font-bold"
+                        >
+                          Remove
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleVendorStatus(v.id, { isDeleted: false, status: 'pending', reason: 'Restored by Super Admin' })}
+                          className="px-3 py-1.5 bg-emerald-100 text-emerald-800 hover:bg-emerald-200 rounded-lg text-xs font-bold"
+                        >
+                          Restore
                         </button>
                       )}
                     </div>
@@ -666,10 +737,18 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onClose }) => {
                       <div className="relative h-40 bg-slate-100">
                         <img src={v.coverImage} alt={v.name} className="w-full h-full object-cover" />
                         <div className="absolute top-2 left-2 flex gap-1">
-                          <StatusBadge status={v.status} size="sm" />
-                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${v.isActive ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-700'}`}>
-                            {v.isActive ? 'Active' : 'Paused'}
-                          </span>
+                          {v.isDeleted ? (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800">
+                              Removed
+                            </span>
+                          ) : (
+                            <>
+                              <StatusBadge status={v.status} size="sm" />
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${v.isActive ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-700'}`}>
+                                {v.isActive ? 'Active' : 'Paused'}
+                              </span>
+                            </>
+                          )}
                         </div>
                         <div className="absolute bottom-2 right-2 bg-slate-900/85 text-white px-2.5 py-1 rounded-lg text-xs font-extrabold">
                           ₹{v.dailyPrice} / day
@@ -685,8 +764,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onClose }) => {
                       </div>
                     </div>
 
-                    <div className="p-4 pt-0 border-t border-slate-100 mt-2 flex items-center justify-between gap-2 text-xs">
-                      {v.status === 'pending_approval' && (
+                    <div className="p-4 pt-0 border-t border-slate-100 mt-2 flex flex-col gap-2 text-xs">
+                      {v.status === 'pending_approval' && !v.isDeleted && (
                         <div className="flex gap-1.5 w-full">
                           <button
                             onClick={() => handleVehicleStatus(v.id, { status: 'approved' })}
@@ -703,14 +782,32 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onClose }) => {
                         </div>
                       )}
 
-                      {v.status === 'approved' && (
-                        <button
-                          onClick={() => handleVehicleStatus(v.id, { isActive: !v.isActive })}
-                          className={`w-full py-1.5 rounded-lg font-bold ${v.isActive ? 'bg-slate-100 hover:bg-slate-200 text-slate-700' : 'bg-emerald-100 text-emerald-800'}`}
-                        >
-                          {v.isActive ? 'Deactivate Listing' : 'Activate Listing'}
-                        </button>
-                      )}
+                      <div className="flex gap-1.5 w-full">
+                        {v.status === 'approved' && !v.isDeleted && (
+                          <button
+                            onClick={() => handleVehicleStatus(v.id, { isActive: !v.isActive })}
+                            className={`flex-1 py-1.5 rounded-lg font-bold ${v.isActive ? 'bg-slate-100 hover:bg-slate-200 text-slate-700' : 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'}`}
+                          >
+                            {v.isActive ? 'Deactivate' : 'Activate'}
+                          </button>
+                        )}
+                        
+                        {!v.isDeleted ? (
+                          <button
+                            onClick={() => setRemovingVehicle(v)}
+                            className="flex-1 py-1.5 bg-rose-50 text-rose-700 hover:bg-rose-100 rounded-lg font-bold"
+                          >
+                            Remove
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleVehicleStatus(v.id, { isDeleted: false, isActive: false, status: 'draft', reason: 'Restored by Super Admin' })}
+                            className="flex-1 py-1.5 bg-emerald-100 text-emerald-800 hover:bg-emerald-200 rounded-lg font-bold"
+                          >
+                            Restore
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -1035,6 +1132,60 @@ CREATE POLICY "Allow doc insert" ON public.booking_documents FOR INSERT WITH CHE
               </div>
             </div>
           )}
+
+          {/* ================= TAB 8: INVOICES ================= */}
+          {activeTab === 'invoices' && (
+            <div className="space-y-4">
+              <InvoiceListView
+                invoices={invoices}
+                onViewInvoice={(inv) => {
+                  const matchingBooking = bookings.find(
+                    b => b.id === inv.bookingId || b.referenceNumber === inv.bookingReference
+                  ) || ({
+                    id: inv.bookingId,
+                    referenceNumber: inv.bookingReference,
+                    vehicleId: inv.vehicleId,
+                    vendorId: inv.vendorId,
+                    customerName: inv.customerDetails?.name || 'Customer',
+                    customerPhone: inv.customerDetails?.phone || '',
+                    customerEmail: inv.customerDetails?.email || '',
+                    customerWhatsapp: inv.customerDetails?.whatsapp || '',
+                    hotelOrDeliveryAddress: inv.customerDetails?.address || '',
+                    pickupDatetime: inv.rentalDetails?.pickupDatetime || new Date().toISOString(),
+                    returnDatetime: inv.rentalDetails?.returnDatetime || new Date().toISOString(),
+                    pickupLocation: inv.rentalDetails?.pickupLocation || 'Margao Hub',
+                    dropoffLocation: inv.rentalDetails?.dropoffLocation || 'Margao Hub',
+                    daysCount: inv.rentalDetails?.totalDurationDays || 1,
+                    dailyRate: inv.rentalDetails?.dailyRate || 0,
+                    subtotalAmount: inv.subtotalAmount,
+                    deliveryFee: inv.extraCharges,
+                    securityDeposit: inv.securityDeposit,
+                    totalEstimatedAmount: inv.totalAmount,
+                    status: 'confirmed',
+                    documents: (inv.documents || []).map(d => ({
+                      id: d.id,
+                      bookingId: inv.bookingId,
+                      docType: d.docType,
+                      idProofType: d.idProofType,
+                      storagePath: d.storagePath,
+                      fileName: d.fileName,
+                      fileSizeBytes: 20000,
+                      mimeType: 'image/svg+xml',
+                      uploadedAt: inv.createdAt,
+                      previewUrl: d.previewUrl,
+                    })),
+                    createdAt: inv.createdAt,
+                  } as Booking);
+
+                  setSelectedInvoice(inv);
+                  setSelectedInvoiceBooking(matchingBooking);
+                }}
+                onRefresh={() => token && loadAdminData(token)}
+                isLoading={loading}
+                userRole="super_admin"
+              />
+            </div>
+          )}
         </div>
 
         {/* Modal: Protected Customer Documents Preview */}
@@ -1117,7 +1268,7 @@ CREATE POLICY "Allow doc insert" ON public.booking_documents FOR INSERT WITH CHE
                   Cancel
                 </button>
                 <button
-                  onClick={() => handleVendorStatus(rejectingVendor.id, 'rejected', vendorRejectionReason)}
+                  onClick={() => handleVendorStatus(rejectingVendor.id, { status: 'rejected', reason: vendorRejectionReason })}
                   className="px-5 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold"
                 >
                   Confirm Rejection
@@ -1155,6 +1306,144 @@ CREATE POLICY "Allow doc insert" ON public.booking_documents FOR INSERT WITH CHE
                   className="px-5 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold"
                 >
                   Confirm Rejection
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal: View / Generate Invoice (Super Admin) */}
+        {selectedInvoiceBooking && (
+          <InvoiceModal
+            booking={selectedInvoiceBooking}
+            invoice={selectedInvoice}
+            adminToken={token}
+            onClose={() => {
+              setSelectedInvoiceBooking(null);
+              setSelectedInvoice(null);
+            }}
+            onInvoiceGenerated={(newInv) => {
+              setInvoices(prev => [newInv, ...prev.filter(i => i.id !== newInv.id)]);
+              setSelectedInvoice(newInv);
+            }}
+            onInvoiceUpdated={(updInv) => {
+              setInvoices(prev => prev.map(i => (i.id === updInv.id ? updInv : i)));
+              setSelectedInvoice(updInv);
+            }}
+          />
+        )}
+        {/* Modal: Remove Vendor */}
+        {removingVendor && (
+          <div className="fixed inset-0 z-60 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 border-2 border-rose-500">
+              <h3 className="font-extrabold text-rose-700 text-base flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5" /> Remove Vendor
+              </h3>
+              <p className="text-sm text-slate-800 font-bold">
+                Are you sure you want to remove this vendor?
+              </p>
+              <div className="bg-slate-50 p-3 rounded-lg text-xs text-slate-700 space-y-1">
+                <div><strong>Vendor:</strong> {removingVendor.ownerName}</div>
+                <div><strong>Business:</strong> {removingVendor.businessName}</div>
+                <div><strong>Phone:</strong> {removingVendor.phone}</div>
+                <div><strong>Email:</strong> {removingVendor.email}</div>
+                <div><strong>Active Booking Count:</strong> {bookings.filter(b => b.vendorId === removingVendor.id && b.status === 'confirmed').length}</div>
+                <div><strong>Vehicles:</strong> {vehicles.filter(v => v.vendorId === removingVendor.id).length}</div>
+              </div>
+              <p className="text-xs text-slate-500">
+                This action will deactivate the vendor and all their active vehicles. They will no longer appear in public searches. Historical bookings and invoices will remain intact.
+              </p>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Reason (Optional)</label>
+                <select 
+                  className="w-full p-2 border border-slate-200 rounded-lg text-xs mb-2"
+                  value={removingReason}
+                  onChange={(e) => setRemovingReason(e.target.value)}
+                >
+                  <option value="">Select a reason...</option>
+                  <option value="Vendor request">Vendor request</option>
+                  <option value="Policy violation">Policy violation</option>
+                  <option value="Vendor inactive">Vendor inactive</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  onClick={() => { setRemovingVendor(null); setRemovingReason(''); }}
+                  className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => handleVendorStatus(removingVendor.id, { isDeleted: true, status: 'inactive', reason: removingReason })}
+                  className="px-5 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold shadow-lg shadow-rose-200"
+                >
+                  Remove Vendor
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal: Remove Vehicle */}
+        {removingVehicle && (
+          <div className="fixed inset-0 z-60 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 border-2 border-rose-500">
+              <h3 className="font-extrabold text-rose-700 text-base flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5" /> Remove Vehicle
+              </h3>
+              
+              {bookings.some(b => b.vehicleId === removingVehicle.id && ['confirmed', 'pending'].includes(b.status)) ? (
+                <div className="bg-amber-50 text-amber-800 p-3 rounded-lg text-xs font-bold flex items-start gap-2 border border-amber-200">
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                  This vehicle has active or upcoming bookings. Removing it will hide it from new searches, but you must manually coordinate existing bookings.
+                </div>
+              ) : (
+                <p className="text-sm text-slate-800 font-bold">
+                  Are you sure you want to remove this vehicle from GoaMate?
+                </p>
+              )}
+              
+              <div className="bg-slate-50 p-3 rounded-lg text-xs text-slate-700 space-y-1">
+                <div><strong>Vehicle Name:</strong> {removingVehicle.name}</div>
+                <div><strong>Registration:</strong> {removingVehicle.registrationNumber}</div>
+                <div><strong>Vendor:</strong> {removingVehicle.vendorBusinessName || vendors.find(v => v.id === removingVehicle.vendorId)?.businessName || 'Unknown'}</div>
+              </div>
+              <p className="text-xs text-slate-500">
+                This action will deactivate the vehicle. Historical bookings and invoices will be preserved.
+              </p>
+              
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Reason (Optional)</label>
+                <select 
+                  className="w-full p-2 border border-slate-200 rounded-lg text-xs mb-2"
+                  value={removingReason}
+                  onChange={(e) => setRemovingReason(e.target.value)}
+                >
+                  <option value="">Select a reason...</option>
+                  <option value="Vehicle unavailable">Vehicle unavailable</option>
+                  <option value="Policy violation">Policy violation</option>
+                  <option value="Duplicate listing">Duplicate listing</option>
+                  <option value="Incorrect details">Incorrect details</option>
+                  <option value="Vendor request">Vendor request</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  onClick={() => { setRemovingVehicle(null); setRemovingReason(''); }}
+                  className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => handleVehicleStatus(removingVehicle.id, { isDeleted: true, isActive: false, status: 'inactive', reason: removingReason })}
+                  className="px-5 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold shadow-lg shadow-rose-200"
+                >
+                  {bookings.some(b => b.vehicleId === removingVehicle.id && ['confirmed', 'pending'].includes(b.status)) 
+                    ? 'Deactivate After Existing Bookings' 
+                    : 'Remove Vehicle'}
                 </button>
               </div>
             </div>
