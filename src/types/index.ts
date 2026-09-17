@@ -52,7 +52,7 @@ export interface Vendor {
   id: string;
   userId: string;
   businessName: string;
-  ownerName: string;
+  vendorName: string;
   phone: string;
   whatsapp: string;
   email: string;
@@ -61,6 +61,14 @@ export interface Vendor {
   rejectionReason?: string;
   notes?: string;
   vehicleCount?: number;
+  rentalCalculationMode?: 'day_rental' | '24_hour';
+  dayRentalStartTime?: string;
+  dayRentalEndTime?: string;
+  gracePeriodMinutes?: number;
+  lateReturnPolicy?: 'extra_hour' | 'extra_day' | 'custom_fee';
+  extraHourPrice?: number;
+  customLateFeeAmount?: number;
+  overnightRentalAllowed?: boolean;
   createdAt: string;
   isDeleted?: boolean;
   deletedAt?: string;
@@ -76,6 +84,14 @@ export interface BookingPriceBreakdown {
   securityDeposit: number;
   totalEstimatedAmount: number;
   durationRule: string;
+  rentalCalculationMode?: 'day_rental' | '24_hour';
+  rentalStartTime?: string;
+  rentalEndTime?: string;
+  chargeableDays?: number;
+  extraHours?: number;
+  lateFee?: number;
+  estimatedTotal?: number;
+  finalTotal?: number;
 }
 
 export interface BookingDocument {
@@ -125,6 +141,14 @@ export interface Booking {
   securityDeposit: number;
   totalEstimatedAmount: number;
   priceSnapshot: BookingPriceBreakdown;
+  rentalCalculationMode?: 'day_rental' | '24_hour';
+  rentalStartTime?: string;
+  rentalEndTime?: string;
+  chargeableDays?: number;
+  extraHours?: number;
+  lateFee?: number;
+  estimatedTotal?: number;
+  finalTotal?: number;
   status: BookingStatus;
   adminNotes?: string;
   vendorNotes?: string;

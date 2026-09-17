@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS vendors (
   id VARCHAR(255) PRIMARY KEY,
   user_id VARCHAR(255) NOT NULL,
   business_name VARCHAR(255) NOT NULL,
-  owner_name VARCHAR(255) NOT NULL,
+  vendor_name VARCHAR(255) NOT NULL,
   phone VARCHAR(50) NOT NULL,
   whatsapp VARCHAR(50) NOT NULL,
   email VARCHAR(255) NOT NULL,
@@ -55,7 +55,7 @@ CREATE TABLE IF NOT EXISTS vendors (
   notes TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
-INSERT INTO vendors (id, user_id, business_name, owner_name, phone, whatsapp, email, service_location, status, created_at) VALUES ('vendor-margao-main', 'user-vendor-1', 'GoaMate Margao Fleet', 'GoaMate Hub Manager', '+91 9403784132', '+91 9403784132', 'goamate.com@gmail.com', 'Margao, Goa', 'approved', '2026-08-15T16:41:01.126Z');
+INSERT INTO vendors (id, user_id, business_name, vendor_name, phone, whatsapp, email, service_location, status, created_at) VALUES ('vendor-margao-main', 'user-vendor-1', 'GoaMate Margao Fleet', 'GoaMate Hub Manager', '+91 9403784132', '+91 9403784132', 'goamate.com@gmail.com', 'Margao, Goa', 'approved', '2026-08-15T16:41:01.126Z');
 
 CREATE TABLE IF NOT EXISTS vehicles (
   id VARCHAR(255) PRIMARY KEY,
@@ -222,3 +222,21 @@ ALTER TABLE vendors ADD COLUMN IF NOT EXISTS deleted_by VARCHAR(255);
 ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP WITH TIME ZONE;
 ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS deleted_by VARCHAR(255);
+
+ALTER TABLE vendors ADD COLUMN IF NOT EXISTS rental_calculation_mode VARCHAR(50) DEFAULT '24_hour';
+ALTER TABLE vendors ADD COLUMN IF NOT EXISTS day_rental_start_time VARCHAR(10) DEFAULT '07:00';
+ALTER TABLE vendors ADD COLUMN IF NOT EXISTS day_rental_end_time VARCHAR(10) DEFAULT '19:00';
+ALTER TABLE vendors ADD COLUMN IF NOT EXISTS grace_period_minutes INTEGER DEFAULT 0;
+ALTER TABLE vendors ADD COLUMN IF NOT EXISTS late_return_policy VARCHAR(50) DEFAULT 'extra_hour';
+ALTER TABLE vendors ADD COLUMN IF NOT EXISTS extra_hour_price INTEGER DEFAULT 0;
+ALTER TABLE vendors ADD COLUMN IF NOT EXISTS custom_late_fee_amount INTEGER DEFAULT 0;
+ALTER TABLE vendors ADD COLUMN IF NOT EXISTS overnight_rental_allowed BOOLEAN DEFAULT true;
+
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS rental_calculation_mode VARCHAR(50);
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS rental_start_time VARCHAR(10);
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS rental_end_time VARCHAR(10);
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS chargeable_days INTEGER;
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS extra_hours INTEGER;
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS late_fee INTEGER;
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS estimated_total INTEGER;
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS final_total INTEGER;

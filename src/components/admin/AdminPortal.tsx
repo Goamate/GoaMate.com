@@ -660,7 +660,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onClose }) => {
                         )}
                       </div>
                       <p className="text-xs text-slate-600 mt-0.5">
-                        Owner: <strong>{v.ownerName}</strong> &bull; {v.serviceLocation} &bull; {v.phone} &bull; {v.email}
+                        Vendor Name: <strong>{v.vendorName}</strong> &bull; {v.serviceLocation} &bull; {v.phone} &bull; {v.email}
                       </p>
                       {v.rejectionReason && (
                         <p className="text-xs text-rose-700 mt-1">Rejection note: {v.rejectionReason}</p>
@@ -1343,7 +1343,7 @@ CREATE POLICY "Allow doc insert" ON public.booking_documents FOR INSERT WITH CHE
                 Are you sure you want to remove this vendor?
               </p>
               <div className="bg-slate-50 p-3 rounded-lg text-xs text-slate-700 space-y-1">
-                <div><strong>Vendor:</strong> {removingVendor.ownerName}</div>
+                <div><strong>Vendor:</strong> {removingVendor.vendorName}</div>
                 <div><strong>Business:</strong> {removingVendor.businessName}</div>
                 <div><strong>Phone:</strong> {removingVendor.phone}</div>
                 <div><strong>Email:</strong> {removingVendor.email}</div>

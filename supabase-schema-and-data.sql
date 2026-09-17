@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS public.vendors (
   id TEXT PRIMARY KEY,
   user_id TEXT,
   business_name TEXT NOT NULL,
-  owner_name TEXT NOT NULL,
+  vendor_name TEXT NOT NULL,
   phone TEXT NOT NULL,
   whatsapp TEXT,
   email TEXT NOT NULL,
@@ -246,7 +246,7 @@ ON CONFLICT (id) DO NOTHING;
 -- ==============================================================================
 
 -- 1. Vendors Seed Data
-INSERT INTO public.vendors (id, user_id, business_name, owner_name, phone, whatsapp, email, service_location, status, notes, vehicle_count)
+INSERT INTO public.vendors (id, user_id, business_name, vendor_name, phone, whatsapp, email, service_location, status, notes, vehicle_count)
 VALUES
   (
     'vendor-margao-main',
@@ -276,7 +276,7 @@ VALUES
   )
 ON CONFLICT (id) DO UPDATE SET
   business_name = EXCLUDED.business_name,
-  owner_name = EXCLUDED.owner_name,
+  vendor_name = EXCLUDED.vendor_name,
   phone = EXCLUDED.phone,
   whatsapp = EXCLUDED.whatsapp,
   email = EXCLUDED.email,
@@ -528,3 +528,21 @@ ALTER TABLE public.vendors ADD COLUMN IF NOT EXISTS deleted_by TEXT;
 ALTER TABLE public.vehicles ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE public.vehicles ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
 ALTER TABLE public.vehicles ADD COLUMN IF NOT EXISTS deleted_by TEXT;
+
+ALTER TABLE vendors ADD COLUMN IF NOT EXISTS rental_calculation_mode VARCHAR(50) DEFAULT '24_hour';
+ALTER TABLE vendors ADD COLUMN IF NOT EXISTS day_rental_start_time VARCHAR(10) DEFAULT '07:00';
+ALTER TABLE vendors ADD COLUMN IF NOT EXISTS day_rental_end_time VARCHAR(10) DEFAULT '19:00';
+ALTER TABLE vendors ADD COLUMN IF NOT EXISTS grace_period_minutes INTEGER DEFAULT 0;
+ALTER TABLE vendors ADD COLUMN IF NOT EXISTS late_return_policy VARCHAR(50) DEFAULT 'extra_hour';
+ALTER TABLE vendors ADD COLUMN IF NOT EXISTS extra_hour_price INTEGER DEFAULT 0;
+ALTER TABLE vendors ADD COLUMN IF NOT EXISTS custom_late_fee_amount INTEGER DEFAULT 0;
+ALTER TABLE vendors ADD COLUMN IF NOT EXISTS overnight_rental_allowed BOOLEAN DEFAULT true;
+
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS rental_calculation_mode VARCHAR(50);
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS rental_start_time VARCHAR(10);
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS rental_end_time VARCHAR(10);
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS chargeable_days INTEGER;
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS extra_hours INTEGER;
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS late_fee INTEGER;
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS estimated_total INTEGER;
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS final_total INTEGER;

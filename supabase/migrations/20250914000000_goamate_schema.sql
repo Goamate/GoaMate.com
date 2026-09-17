@@ -57,7 +57,7 @@ CREATE TABLE IF NOT EXISTS public.vendors (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE UNIQUE,
   business_name TEXT NOT NULL,
-  owner_name TEXT NOT NULL,
+  vendor_name TEXT NOT NULL,
   phone TEXT NOT NULL,
   whatsapp TEXT NOT NULL,
   email TEXT NOT NULL,

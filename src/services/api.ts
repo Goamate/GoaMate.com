@@ -113,7 +113,7 @@ export const api = {
 
   // Vendor
   async vendorRegister(data: {
-    ownerName: string;
+    vendorName: string;
     businessName: string;
     phone: string;
     whatsapp: string;
@@ -148,6 +148,18 @@ export const api = {
     });
     const result = await res.json();
     if (!res.ok) throw new Error(result.error || 'Unauthorized');
+    return result;
+  },
+
+
+  async updateVendorSettings(token: string, settings: any): Promise<{ success: boolean, vendor: Vendor }> {
+    const res = await fetch('/api/vendor/settings', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: token },
+      body: JSON.stringify(settings),
+    });
+    const result = await res.json();
+    if (!res.ok) throw new Error(result.error || 'Failed to update settings');
     return result;
   },
 

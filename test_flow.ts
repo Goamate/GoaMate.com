@@ -6,7 +6,7 @@ const vendor = {
   id: 'vendor-flow-1',
   userId: 'user-flow',
   businessName: 'Flow Vendor',
-  ownerName: 'Flow Owner',
+  vendorName: 'Flow Owner',
   phone: '999',
   email: 'flow@example.com',
   serviceLocation: 'Goa',

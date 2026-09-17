@@ -36,7 +36,7 @@ export const vendors: Vendor[] = [
     id: 'platform-default',
     userId: 'user-system',
     businessName: 'GoaMate Internal Fleet',
-    ownerName: 'System Admin',
+    vendorName: 'System Admin',
     phone: '+91 9999999999',
     whatsapp: '+91 9999999999',
     email: 'system@goamate.com',

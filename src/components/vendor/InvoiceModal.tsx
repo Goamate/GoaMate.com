@@ -170,6 +170,15 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
         amount: booking.deliveryFee,
       });
     }
+    if (booking.lateFee && booking.lateFee > 0) {
+      initialItems.push({
+        id: 'item-late-fee',
+        description: `Late Return Fee`,
+        quantityOrDays: '1',
+        rate: booking.lateFee,
+        amount: booking.lateFee,
+      });
+    }
 
     setFormItems(initialItems);
     setSecurityDeposit(booking.securityDeposit || 0);

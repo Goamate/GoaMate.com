@@ -336,12 +336,14 @@ apiRouter.post('/bookings/calculate', (req, res) => {
     }
   }
 
+  const vendorSettings = vendors.find(vd => vd.id === v.vendorId);
   const calc = calculateRentalPricing({
     pickupDatetime,
     returnDatetime,
     dailyPrice: v.dailyPrice,
     securityDeposit: v.securityDeposit,
     deliveryFee,
+    vendor: vendorSettings,
   });
 
   if (!calc.isValid) {
@@ -435,12 +437,14 @@ apiRouter.post('/bookings', (req, res) => {
     deliveryFee = matchedArea.deliveryCharge;
   }
 
+  const linkVendor = vendors.find(v => v.id === link.vendorId);
   const calc = calculateRentalPricing({
     pickupDatetime,
     returnDatetime,
     dailyPrice: vehicle.dailyPrice,
     securityDeposit: vehicle.securityDeposit,
     deliveryFee,
+    vendor: linkVendor,
   });
 
   if (!calc.isValid) {
@@ -511,6 +515,13 @@ apiRouter.post('/bookings', (req, res) => {
     deliveryFee: calc.breakdown.deliveryFee,
     securityDeposit: calc.breakdown.securityDeposit,
     totalEstimatedAmount: calc.breakdown.totalEstimatedAmount,
+    rentalCalculationMode: calc.breakdown.rentalCalculationMode,
+    rentalStartTime: calc.breakdown.rentalStartTime,
+    rentalEndTime: calc.breakdown.rentalEndTime,
+    chargeableDays: calc.breakdown.chargeableDays,
+    extraHours: calc.breakdown.extraHours,
+    lateFee: calc.breakdown.lateFee,
+    estimatedTotal: calc.breakdown.estimatedTotal,
     priceSnapshot: calc.breakdown,
     status: 'pending',
     directLinkId: matchedDirectLink?.id,
@@ -679,9 +690,9 @@ apiRouter.post('/vendor/register', async (req, res) => {
     return res.status(403).json({ error: 'Vendor registrations are currently closed by the platform administrator.' });
   }
 
-  const { ownerName, businessName, phone, whatsapp, email, serviceLocation, password } = req.body;
+  const { vendorName, businessName, phone, whatsapp, email, serviceLocation, password } = req.body;
 
-  if (!ownerName || !businessName || !phone || !email || !password) {
+  if (!vendorName || !businessName || !phone || !email || !password) {
     return res.status(400).json({ error: 'All fields are required.' });
   }
 
@@ -695,7 +706,7 @@ apiRouter.post('/vendor/register', async (req, res) => {
     id: vendorId,
     userId: `user-${crypto.randomUUID()}`,
     businessName: businessName.trim(),
-    ownerName: ownerName.trim(),
+    vendorName: vendorName.trim(),
     phone: phone.trim(),
     whatsapp: (whatsapp || phone).trim(),
     email: email.trim().toLowerCase(),
@@ -715,7 +726,7 @@ apiRouter.post('/vendor/register', async (req, res) => {
     action: 'VENDOR_REGISTERED',
     entityType: 'vendor',
     entityId: vendorId,
-    details: { businessName, ownerName, email },
+    details: { businessName, vendorName, email },
   });
 
   res.status(201).json({
@@ -806,6 +817,27 @@ apiRouter.get('/vendor/me', requireVendor, (req, res) => {
       totalBookingValue: vendorBookings.reduce((sum, b) => sum + b.totalEstimatedAmount, 0),
     },
   });
+});
+
+
+apiRouter.patch('/vendor/settings', requireVendor, (req, res) => {
+  const vendor = (req as any).vendor as Vendor;
+  const updates = req.body;
+  
+  if (updates.rentalCalculationMode) vendor.rentalCalculationMode = updates.rentalCalculationMode;
+  if (updates.dayRentalStartTime) vendor.dayRentalStartTime = updates.dayRentalStartTime;
+  if (updates.dayRentalEndTime) vendor.dayRentalEndTime = updates.dayRentalEndTime;
+  if (updates.gracePeriodMinutes !== undefined) vendor.gracePeriodMinutes = updates.gracePeriodMinutes;
+  if (updates.lateReturnPolicy) vendor.lateReturnPolicy = updates.lateReturnPolicy;
+  if (updates.extraHourPrice !== undefined) vendor.extraHourPrice = updates.extraHourPrice;
+  if (updates.customLateFeeAmount !== undefined) vendor.customLateFeeAmount = updates.customLateFeeAmount;
+  if (updates.overnightRentalAllowed !== undefined) vendor.overnightRentalAllowed = updates.overnightRentalAllowed;
+  
+  if (isSupabaseConfigured) {
+    saveVendorToSupabase(vendor).catch(console.error);
+  }
+  
+  res.json({ success: true, vendor });
 });
 
 apiRouter.get('/vendor/vehicles', requireVendor, (req, res) => {

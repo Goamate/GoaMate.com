@@ -52,7 +52,7 @@ CREATE TABLE IF NOT EXISTS vendors (
   id VARCHAR(255) PRIMARY KEY,
   user_id VARCHAR(255) NOT NULL,
   business_name VARCHAR(255) NOT NULL,
-  owner_name VARCHAR(255) NOT NULL,
+  vendor_name VARCHAR(255) NOT NULL,
   phone VARCHAR(50) NOT NULL,
   whatsapp VARCHAR(50) NOT NULL,
   email VARCHAR(255) NOT NULL,
@@ -65,7 +65,7 @@ CREATE TABLE IF NOT EXISTS vendors (
 `;
 
 for (const v of vendors) {
-  sql += `INSERT INTO vendors (id, user_id, business_name, owner_name, phone, whatsapp, email, service_location, status, created_at) VALUES (${escapeSql(v.id)}, ${escapeSql(v.userId)}, ${escapeSql(v.businessName)}, ${escapeSql(v.ownerName)}, ${escapeSql(v.phone)}, ${escapeSql(v.whatsapp)}, ${escapeSql(v.email)}, ${escapeSql(v.serviceLocation)}, ${escapeSql(v.status)}, ${escapeSql(v.createdAt)});\n`;
+  sql += `INSERT INTO vendors (id, user_id, business_name, vendor_name, phone, whatsapp, email, service_location, status, created_at) VALUES (${escapeSql(v.id)}, ${escapeSql(v.userId)}, ${escapeSql(v.businessName)}, ${escapeSql(v.vendorName)}, ${escapeSql(v.phone)}, ${escapeSql(v.whatsapp)}, ${escapeSql(v.email)}, ${escapeSql(v.serviceLocation)}, ${escapeSql(v.status)}, ${escapeSql(v.createdAt)});\n`;
 }
 
 sql += `

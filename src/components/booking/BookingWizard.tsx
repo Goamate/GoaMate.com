@@ -359,12 +359,17 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
               {/* Live Pricing Breakdown from Server */}
               {priceBreakdown && (
                 <div className="bg-slate-900 text-white p-5 rounded-2xl space-y-3">
+                  {priceBreakdown.rentalCalculationMode === 'day_rental' && (
+                    <div className="mb-3 p-2 bg-amber-500/10 border border-amber-500/20 rounded text-amber-200 text-xs font-semibold">
+                      Day Rental Policy: This vehicle is rented on a day-rental basis from {priceBreakdown.rentalStartTime} to {priceBreakdown.rentalEndTime}. Returning the vehicle after the permitted return time may result in additional charges.
+                    </div>
+                  )}
                   <div className="flex items-center justify-between pb-3 border-b border-slate-800">
                     <span className="text-xs uppercase tracking-wider text-slate-400 font-bold">
-                      Rental Calculation (24h Rule)
+                      Rental Calculation ({priceBreakdown.rentalCalculationMode === 'day_rental' ? 'Day Rental' : '24h Rule'})
                     </span>
                     <span className="text-xs font-bold px-2 py-0.5 rounded bg-emerald-900/60 text-emerald-300 border border-emerald-700/50">
-                      {priceBreakdown.daysCount} Day{priceBreakdown.daysCount > 1 ? 's' : ''} ({priceBreakdown.totalHours != null ? priceBreakdown.totalHours.toFixed(1) : (priceBreakdown.daysCount * 24)} hrs)
+                      {priceBreakdown.daysCount} Day{priceBreakdown.daysCount > 1 ? 's' : ''} {priceBreakdown.rentalCalculationMode !== 'day_rental' && `(${priceBreakdown.totalHours != null ? priceBreakdown.totalHours.toFixed(1) : (priceBreakdown.daysCount * 24)} hrs)`}
                     </span>
                   </div>
 
@@ -373,6 +378,13 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
                       <span>Daily Rate ({priceBreakdown.daysCount} &times; ₹{priceBreakdown.dailyRate}):</span>
                       <span className="font-semibold text-white">₹{priceBreakdown.subtotalAmount}</span>
                     </div>
+                    
+                    {priceBreakdown.lateFee ? (
+                      <div className="flex justify-between text-rose-300">
+                        <span>Late Return Fee:</span>
+                        <span className="font-semibold">₹{priceBreakdown.lateFee}</span>
+                      </div>
+                    ) : null}
 
                     <div className="flex justify-between">
                       <span>Delivery &amp; Pickup Fee:</span>
@@ -796,6 +808,12 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
                       <span>Rental Subtotal ({priceBreakdown.daysCount} Days):</span>
                       <span className="font-semibold">₹{priceBreakdown.subtotalAmount}</span>
                     </div>
+                    {priceBreakdown.lateFee ? (
+                      <div className="flex justify-between text-rose-600">
+                        <span>Late Return Fee:</span>
+                        <span className="font-semibold">₹{priceBreakdown.lateFee}</span>
+                      </div>
+                    ) : null}
                     <div className="flex justify-between">
                       <span>Delivery Fee:</span>
                       <span className="font-semibold">

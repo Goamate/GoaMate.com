@@ -49,7 +49,7 @@ export const VendorPortal: React.FC<VendorPortalProps> = ({ onClose, onOpenDirec
   const [token, setToken] = useState<string | null>(() => localStorage.getItem('goamate_vendor_token'));
   const [vendor, setVendor] = useState<Vendor | null>(null);
   const [stats, setStats] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState<'overview' | 'vehicles' | 'bookings' | 'links' | 'invoices'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'vehicles' | 'bookings' | 'links' | 'invoices' | 'settings'>('overview');
 
   // Login & Register state
   const [isRegistering, setIsRegistering] = useState<boolean>(false);
@@ -57,7 +57,7 @@ export const VendorPortal: React.FC<VendorPortalProps> = ({ onClose, onOpenDirec
   const [loginPassword, setLoginPassword] = useState<string>('');
 
   const [regForm, setRegForm] = useState({
-    ownerName: '',
+    vendorName: '',
     businessName: '',
     phone: '',
     whatsapp: '',
@@ -352,12 +352,12 @@ export const VendorPortal: React.FC<VendorPortalProps> = ({ onClose, onOpenDirec
           ) : (
             <form onSubmit={handleRegister} className="space-y-3.5 text-xs">
               <div>
-                <label className="block font-bold text-slate-700 mb-1">Owner Name *</label>
+                <label className="block font-bold text-slate-700 mb-1">Vendor Name *</label>
                 <input
                   type="text"
                   required
-                  value={regForm.ownerName}
-                  onChange={e => setRegForm({ ...regForm, ownerName: e.target.value })}
+                  value={regForm.vendorName}
+                  onChange={e => setRegForm({ ...regForm, vendorName: e.target.value })}
                   placeholder="e.g. Francis D'Souza"
                   className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
                 />
@@ -477,7 +477,7 @@ export const VendorPortal: React.FC<VendorPortalProps> = ({ onClose, onOpenDirec
             </p>
           </div>
           <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-600 text-left space-y-1">
-            <div><strong>Owner:</strong> {vendor.ownerName}</div>
+            <div><strong>Vendor Name:</strong> {vendor.vendorName}</div>
             <div><strong>Location:</strong> {vendor.serviceLocation}</div>
             <div><strong>Contact:</strong> {vendor.phone}</div>
           </div>
@@ -553,7 +553,7 @@ export const VendorPortal: React.FC<VendorPortalProps> = ({ onClose, onOpenDirec
                 <StatusBadge status={vendor.status} size="sm" />
               </div>
               <p className="text-xs text-slate-400">
-                {vendor.ownerName} &bull; {vendor.serviceLocation}
+                {vendor.vendorName} &bull; {vendor.serviceLocation}
               </p>
             </div>
           </div>
@@ -580,6 +580,7 @@ export const VendorPortal: React.FC<VendorPortalProps> = ({ onClose, onOpenDirec
             { id: 'bookings', label: `Assigned Bookings (${bookingsList.length})` },
             { id: 'links', label: `Direct Customer Links (${linksList.length})` },
             { id: 'invoices', label: `Invoices (${invoicesList.length})` },
+            { id: 'settings', label: `Settings` },
           ].map(tab => (
             <button
               key={tab.id}

@@ -6,7 +6,7 @@ const vendor = {
   id: 'vendor-1',
   userId: 'user-123',
   businessName: 'Test Vendor',
-  ownerName: 'Test Owner',
+  vendorName: 'Test Owner',
   phone: '9999999999',
   whatsapp: '9999999999',
   email: 'test@example.com',
