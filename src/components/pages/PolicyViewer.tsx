@@ -40,41 +40,92 @@ export const PolicyViewer: React.FC<PolicyViewerProps> = ({ page, onBack }) => {
               </div>
 
               <section className="space-y-3">
-                <h3 className="text-base font-bold text-slate-900">1. Eligibility and Document Presentation</h3>
-                <p>
-                  Renters must be at least 21 years of age for self-drive four-wheelers and 18 years of age for two-wheelers. The primary renter must possess an original, valid Driving Licence with at least one year of driving experience, alongside a verified Government Photo Identification proof (Aadhaar Card, Passport, or Voter ID).
-                </p>
-                <div className="p-3 bg-slate-50 border-l-4 border-emerald-600 rounded-r-lg text-xs font-medium text-slate-700">
-                  Physical inspection of original documents is mandatory at vehicle delivery. Failure to present originals will result in immediate cancellation.
-                </div>
+                <h3 className="text-base font-bold text-slate-900">1. Eligibility &amp; Documentation</h3>
+                <ul className="list-disc pl-5 space-y-2">
+                  <li><strong>Age Limit:</strong> The rider/driver must be at least 18 years old for bikes and 21 years old for cars.</li>
+                  <li><strong>License:</strong> A valid original Indian Driving License (DL) is mandatory. International tourists must provide an International Driving Permit (IDP).</li>
+                  <li><strong>ID Proof:</strong> A copy of your Aadhaar Card or Passport must be submitted at the time of pickup.</li>
+                </ul>
               </section>
 
               <section className="space-y-3">
-                <h3 className="text-base font-bold text-slate-900">2. Deterministic 24-Hour Rental Calculation</h3>
+                <h3 className="text-base font-bold text-slate-900">2. Rental Period &amp; Extensions</h3>
+                <ul className="list-disc pl-5 space-y-2">
+                  <li><strong>Duration:</strong> The rental period is calculated on a 24-hour basis.</li>
+                  <li><strong>Late Return:</strong> A grace period of 30 minutes is allowed. Beyond that, hourly charges or a full day's rent will apply.</li>
+                  <li><strong>Extensions:</strong> If you wish to extend the rental, you must inform us at least 6 hours in advance, subject to vehicle availability.</li>
+                </ul>
+              </section>
+
+              <section className="space-y-3">
+                <h3 className="text-base font-bold text-slate-900">3. Payment &amp; Security Deposit</h3>
+                <ul className="list-disc pl-5 space-y-2">
+                  <li><strong>Full Payment:</strong> All rental charges must be paid in advance at the time of vehicle delivery.</li>
+                  <li><strong>Security Deposit:</strong> A refundable security deposit may be required. This will be returned after inspecting the vehicle for damages or traffic fines.</li>
+                </ul>
+              </section>
+
+              <section className="space-y-3">
+                <h3 className="text-base font-bold text-slate-900">4. Fuel &amp; Maintenance</h3>
+                <ul className="list-disc pl-5 space-y-2">
+                  <li><strong>Fuel Policy:</strong> We provide a minimum amount of fuel to reach the nearest petrol pump. The vehicle must be returned with the same level of fuel as provided, or fuel charges will apply.</li>
+                  <li><strong>Breakdowns:</strong> In case of a mechanical failure, contact us immediately. Do not attempt local repairs without our consent.</li>
+                </ul>
+              </section>
+
+              <section className="space-y-3">
+                <h3 className="text-base font-bold text-slate-900">5. Damage, Theft, and Accidents</h3>
+                <ul className="list-disc pl-5 space-y-2">
+                  <li><strong>User Responsibility:</strong> The hirer is responsible for any damage caused to the vehicle during the rental period.</li>
+                  <li><strong>Major Damage/Theft:</strong> In case of an accident or theft, the hirer must file an FIR and inform RNC Car Rental immediately. Insurance claims are subject to the insurance company's terms; any gap in cost must be covered by the hirer.</li>
+                  <li><strong>Tyres &amp; Keys:</strong> Damage to tyres or loss of keys is not covered by insurance and must be paid for by the hirer.</li>
+                </ul>
+              </section>
+
+              <section className="space-y-3">
+                <h3 className="text-base font-bold text-slate-900">6. Usage Restrictions</h3>
+                <ul className="list-disc pl-5 space-y-2">
+                  <li><strong>Permit:</strong> Our vehicles have Goa taxi/rental permits. Crossing the Goa state border without a valid interstate permit (and our prior permission) is strictly prohibited.</li>
+                  <li><strong>Prohibited Acts:</strong> Driving under the influence of alcohol/drugs, overspeeding, or using the vehicle for commercial transport/racing is strictly forbidden.</li>
+                  <li><strong>Cleaning:</strong> If the vehicle is returned excessively dirty (sand inside the car, stains on seats), a cleaning fee will be charged.</li>
+                </ul>
+              </section>
+
+              <section className="space-y-3">
+                <h3 className="text-base font-bold text-slate-900">7. Traffic Violations</h3>
                 <p>
-                  All rentals operate on strict 24-hour block durations. Any started 24-hour block is billed as one complete rental day. Vehicles returned exceeding a grace period of 30 minutes enter the subsequent 24-hour billing cycle.
+                  All traffic fines (e.g., no-helmet, overspeeding, wrong parking) incurred during the rental period are the sole responsibility of the hirer. If a fine arrives later via e-challan, it will be recovered from the security deposit or the hirer.
                 </p>
               </section>
 
               <section className="space-y-3">
-                <h3 className="text-base font-bold text-slate-900">3. Fuel Policy (Level-to-Level)</h3>
-                <p>
-                  Vehicles are supplied with a recorded fuel level indicated on the digital handover checklist. Renters are obligated to return the vehicle with an equivalent fuel gauge reading. Differences in returned fuel are debited from the refundable security deposit at prevailing Goa retail rates plus a standard handling fee.
-                </p>
+                <h3 className="text-base font-bold text-slate-900">8. Feedback and Online Review</h3>
+                <ul className="list-disc pl-5 space-y-2">
+                  <li><strong>Experience Sharing:</strong> RNC Car Rental constantly strives to provide the best possible service to our customers. Therefore, sharing your feedback/Google Review is considered an essential part of our vehicle return process.</li>
+                  <li><strong>Service Improvement:</strong> Your reviews help us maintain high standards and improve our services. We kindly request you to take a minute during the vehicle hand-over to share your genuine experience on our Google Business page.</li>
+                </ul>
               </section>
 
               <section className="space-y-3">
-                <h3 className="text-base font-bold text-slate-900">4. Geographic Boundaries &amp; Prohibited Uses</h3>
-                <p>
-                  Unless specifically endorsed in writing by GoaMate management, all vehicles are licensed for operation exclusively within the state borders of Goa. Crossing into Maharashtra or Karnataka without valid cross-border permits is strictly prohibited and renders insurance invalid.
-                </p>
+                <h3 className="text-base font-bold text-slate-900">9. Pickup &amp; Drop-off Policy</h3>
+                <ul className="list-disc pl-5 space-y-2">
+                  <li><strong>Free Service Zone:</strong> We offer Free Pickup and Drop-off within a 10 km radius of Margao Railway Station. Our team will pick you up from your shared location and bring you to our office.</li>
+                  <li><strong>Mandatory Office Visit:</strong> For security and verification, all customers must visit our office to complete the necessary documentation and formalities before the vehicle is handed over.</li>
+                  <li><strong>Outside Service Zone:</strong> For any pickup or drop-off location beyond the 10 km radius, a flat convenience fee of ₹300 will be applicable.</li>
+                </ul>
               </section>
 
               <section className="space-y-3">
-                <h3 className="text-base font-bold text-slate-900">5. Security Deposit &amp; Traffic Penalties</h3>
-                <p>
-                  Refundable security deposits are collected at vehicle handover via UPI or cash. The deposit is refunded upon safe return after vehicle inspection. The renter remains solely liable for traffic challans, speed camera citations, or parking violations incurred during the rental tenure.
-                </p>
+                <h3 className="text-base font-bold text-slate-900">10. Booking Advance &amp; Confirmation</h3>
+                <ul className="list-disc pl-5 space-y-2">
+                  <li><strong>Reservation Amount:</strong> To confirm your booking, a non-refundable advance payment is mandatory:
+                    <ul className="list-disc pl-5 mt-1 space-y-1 text-slate-600">
+                      <li>Two-Wheelers (Bikes/Scooters): ₹500 advance.</li>
+                      <li>Four-Wheelers (Cars): ₹1,000 advance.</li>
+                    </ul>
+                  </li>
+                  <li><strong>Final Payment:</strong> The remaining rental balance must be cleared at the office during the documentation process.</li>
+                </ul>
               </section>
             </>
           )}
