@@ -208,8 +208,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onClose }) => {
     try {
       setIsPurgingVendor(true);
       setError(null);
-      const res = await api.deleteVendorPermanently(purgingVendor.id, token);
-      setSuccessMsg(res.message || `Vendor ${purgingVendor.businessName} was permanently deleted.`);
+      await api.deleteVendorPermanently(purgingVendor.id, token);
+      setSuccessMsg(`Vendor deleted successfully. All vehicles belonging to this vendor were also removed.`);
       setPurgingVendor(null);
       setPurgeConfirmationCheck(false);
       await loadAdminData(token);
@@ -1550,7 +1550,7 @@ CREATE POLICY "Allow doc insert" ON public.booking_documents FOR INSERT WITH CHE
             <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4 border-2 border-rose-600">
               <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                 <h3 className="font-extrabold text-rose-700 text-base flex items-center gap-2">
-                  <Trash2 className="w-5 h-5 text-rose-600" /> Remove Vendor Complete Data
+                  <Trash2 className="w-5 h-5 text-rose-600" /> Delete Vendor Permanently?
                 </h3>
                 <button
                   onClick={() => { setPurgingVendor(null); setPurgeConfirmationCheck(false); }}
@@ -1564,8 +1564,8 @@ CREATE POLICY "Allow doc insert" ON public.booking_documents FOR INSERT WITH CHE
                 <div className="flex items-start gap-2">
                   <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
                   <div>
-                    <strong className="font-bold text-rose-950 block text-sm">Permanent Erasure Warning</strong>
-                    <span>This action will permanently wipe this vendor and all associated fleet vehicles from the website and Supabase database. This action cannot be undone.</span>
+                    <strong className="font-bold text-rose-950 block text-sm">Delete Vendor Permanently?</strong>
+                    <span>This will permanently delete this vendor and all cars and bikes registered by this vendor. This action cannot be undone.</span>
                   </div>
                 </div>
               </div>
@@ -1616,12 +1616,12 @@ CREATE POLICY "Allow doc insert" ON public.booking_documents FOR INSERT WITH CHE
                   {isPurgingVendor ? (
                     <>
                       <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                      <span>Purging Vendor Data...</span>
+                      <span>Deleting Vendor...</span>
                     </>
                   ) : (
                     <>
                       <Trash2 className="w-3.5 h-3.5" />
-                      <span>Permanently Delete Vendor Complete Data</span>
+                      <span>Delete Vendor Permanently</span>
                     </>
                   )}
                 </button>

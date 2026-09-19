@@ -55,7 +55,7 @@ CREATE TABLE IF NOT EXISTS public.vendors (
 -- 2. Create Vehicles Table
 CREATE TABLE IF NOT EXISTS public.vehicles (
   id TEXT PRIMARY KEY,
-  vendor_id TEXT REFERENCES public.vendors(id) ON DELETE SET NULL,
+  vendor_id TEXT REFERENCES public.vendors(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   category TEXT NOT NULL, -- 'scooter', 'bike', 'car'
   brand TEXT NOT NULL,

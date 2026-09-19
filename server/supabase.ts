@@ -498,26 +498,9 @@ export async function deleteVendorPermanentlyFromSupabase(
   if (!supabase) return { success: true, deletedVehiclesCount: 0 };
 
   try {
-    let deletedVehiclesCount = 0;
     const vendorIdsToMatch = Array.from(new Set([vendorId, ...(userId ? [userId] : [])]));
 
-    // 1. Delete all vehicles belonging to this vendor from vehicles table
-    for (const vid of vendorIdsToMatch) {
-      try {
-        const { data: vehData } = await supabase.from('vehicles').select('id').eq('vendor_id', vid);
-        if (vehData && vehData.length > 0) {
-          deletedVehiclesCount += vehData.length;
-          const { error: delVehErr } = await supabase.from('vehicles').delete().eq('vendor_id', vid);
-          if (delVehErr) {
-            console.warn(`[Supabase] Notice deleting vehicles for vendor ${vid}:`, delVehErr.message);
-          }
-        }
-      } catch (vehErr: any) {
-        console.warn(`[Supabase] Exception checking vehicles for ${vid}:`, vehErr.message);
-      }
-    }
-
-    // 2. Unlink vendor_id on bookings so historical booking records do not violate FK or break
+    // 1. Unlink vendor_id on bookings so historical booking records are preserved safely
     for (const vid of vendorIdsToMatch) {
       try {
         await supabase.from('bookings').update({ vendor_id: null }).eq('vendor_id', vid);
@@ -526,29 +509,24 @@ export async function deleteVendorPermanentlyFromSupabase(
       }
     }
 
-    // 3. Remove invoices for this vendor
+    // 2. Delete the vendor from the vendors table. PostgreSQL ON DELETE CASCADE automatically deletes all related vehicles.
     for (const vid of vendorIdsToMatch) {
-      try {
-        await supabase.from('invoices').delete().eq('vendor_id', vid);
-      } catch (invErr: any) {
-        console.warn(`[Supabase] Notice deleting invoices for vendor ${vid}:`, invErr.message);
+      const { error } = await supabase
+        .from('vendors')
+        .delete()
+        .eq('id', vid);
+
+      if (error) {
+        console.error('Vendor deletion failed:', error);
+        throw error;
       }
     }
 
-    // 4. Delete from public.vendors table
-    try {
-      await supabase.from('vendors').delete().eq('id', vendorId);
-      if (userId) {
-        await supabase.from('vendors').delete().eq('user_id', userId);
-      }
-      if (email) {
-        await supabase.from('vendors').delete().ilike('email', email);
-      }
-    } catch (venErr: any) {
-      console.warn(`[Supabase] Notice deleting row from vendors:`, venErr.message);
+    if (email) {
+      await supabase.from('vendors').delete().ilike('email', email);
     }
 
-    // 5. Delete from public.vendor_profiles table
+    // 3. Delete from public.vendor_profiles table
     try {
       if (vendorId.startsWith('profile-')) {
         const pId = vendorId.replace('profile-', '');
@@ -564,7 +542,7 @@ export async function deleteVendorPermanentlyFromSupabase(
       console.warn(`[Supabase] Notice deleting row from vendor_profiles:`, vpErr.message);
     }
 
-    return { success: true, deletedVehiclesCount };
+    return { success: true, deletedVehiclesCount: 0 };
   } catch (err: any) {
     console.error('[Supabase] Error deleting vendor permanently:', err.message);
     return { success: false, deletedVehiclesCount: 0, error: err.message };
