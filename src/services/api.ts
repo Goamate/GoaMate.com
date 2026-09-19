@@ -228,6 +228,16 @@ export const api = {
     if (!res.ok) throw new Error('Failed to revoke link');
   },
 
+  async deleteVendorAccount(token: string): Promise<{ success: boolean; message: string }> {
+    const res = await fetch('/api/vendor/account', {
+      method: 'DELETE',
+      headers: { Authorization: token },
+    });
+    const result = await res.json();
+    if (!res.ok) throw new Error(result.error || 'Failed to delete vendor account');
+    return result;
+  },
+
   // Admin
   async adminLogin(secretToken: string): Promise<{ success: boolean; token: string }> {
     const res = await fetch('/api/admin/login', {
@@ -298,6 +308,19 @@ export const api = {
     const result = await res.json();
     if (!res.ok) throw new Error(result.error || 'Failed to update vendor');
     return result.vendor;
+  },
+
+  async deleteVendorPermanently(id: string, token: string): Promise<{ success: boolean; message: string; deletedVehiclesCount?: number }> {
+    const res = await fetch(`/api/admin/vendors/${id}`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-admin-token': token,
+      },
+    });
+    const result = await res.json();
+    if (!res.ok) throw new Error(result.error || 'Failed to permanently delete vendor data');
+    return result;
   },
 
   async updateVehicleStatus(id: string, data: { status?: Vehicle['status']; isActive?: boolean; rejectionReason?: string; isDeleted?: boolean; reason?: string }, token?: string): Promise<Vehicle> {

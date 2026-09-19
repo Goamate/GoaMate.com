@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Phone, MessageSquare, Menu, X, Car, Bike, Shield, User, ArrowRight, Search, FileSearch } from 'lucide-react';
+import { Phone, MessageSquare, Menu, X, Car, Bike, Shield, User, ArrowRight, Search, FileSearch, Building2 } from 'lucide-react';
 import { BrandLogo } from '../ui/BrandLogo';
 import { BRAND, getWhatsAppLink } from '../../lib/constants';
 
@@ -10,6 +10,7 @@ interface NavbarProps {
   onOpenBooking?: () => void;
   onOpenTracker?: () => void;
   onOpenVendor: () => void;
+  onOpenVendorRegister?: () => void;
   onOpenAdmin: () => void;
   onNavigateHome?: () => void;
 }
@@ -21,6 +22,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenBooking,
   onOpenTracker,
   onOpenVendor,
+  onOpenVendorRegister,
   onOpenAdmin,
   onNavigateHome,
 }) => {
@@ -217,6 +219,17 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span>Vendor Login</span>
             </button>
 
+            {/* Vendor Partner Registration button */}
+            {onOpenVendorRegister && (
+              <button
+                onClick={onOpenVendorRegister}
+                className="hidden xl:flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition-colors cursor-pointer"
+                title="Register your fleet as partner in Goa"
+              >
+                <span>Partner with Us</span>
+              </button>
+            )}
+
             {/* Quick WhatsApp Action */}
             <a
               href={getWhatsAppLink('Hello GoaMate, I want to book a car/bike in Goa.')}
@@ -369,6 +382,19 @@ export const Navbar: React.FC<NavbarProps> = ({
               <User className="w-4 h-4 text-slate-600" />
               <span>Vendor Login &amp; Fleet Dashboard</span>
             </button>
+
+            {onOpenVendorRegister && (
+              <button
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  onOpenVendorRegister();
+                }}
+                className="w-full text-left px-4 py-2.5 rounded-lg text-xs font-bold text-emerald-900 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 flex items-center gap-2"
+              >
+                <Building2 className="w-4 h-4 text-emerald-600" />
+                <span>Register as Vendor Partner (/vendor/register)</span>
+              </button>
+            )}
 
             <button
               onClick={() => {

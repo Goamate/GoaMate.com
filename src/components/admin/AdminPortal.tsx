@@ -8,6 +8,7 @@ import {
   FileText,
   Download,
   Users,
+  User,
   Car,
   Calendar,
   Lock,
@@ -22,6 +23,7 @@ import {
   ToggleRight,
   Check,
   X,
+  Trash2,
 } from 'lucide-react';
 import { api } from '../../services/api';
 import { Booking, Vehicle, Vendor, SiteSettings, AuditLog, BookingStatus, Invoice } from '../../types';
@@ -48,6 +50,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onClose }) => {
   const [stats, setStats] = useState<any>(null);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
+  const [vendorFilter, setVendorFilter] = useState<'all' | 'pending' | 'approved' | 'suspended' | 'rejected' | 'removed'>('all');
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [settings, setSettings] = useState<SiteSettings | null>(null);
@@ -65,6 +68,9 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onClose }) => {
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [rejectingVendor, setRejectingVendor] = useState<Vendor | null>(null);
   const [removingVendor, setRemovingVendor] = useState<Vendor | null>(null);
+  const [purgingVendor, setPurgingVendor] = useState<Vendor | null>(null);
+  const [isPurgingVendor, setIsPurgingVendor] = useState<boolean>(false);
+  const [purgeConfirmationCheck, setPurgeConfirmationCheck] = useState<boolean>(false);
   const [vendorRejectionReason, setVendorRejectionReason] = useState<string>('');
 
   const [rejectingVehicle, setRejectingVehicle] = useState<Vehicle | null>(null);
@@ -196,6 +202,24 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onClose }) => {
     }
   };
 
+  // Permanently delete vendor and all associated data from platform and database
+  const handleDeleteVendorPermanently = async () => {
+    if (!token || !purgingVendor) return;
+    try {
+      setIsPurgingVendor(true);
+      setError(null);
+      const res = await api.deleteVendorPermanently(purgingVendor.id, token);
+      setSuccessMsg(res.message || `Vendor ${purgingVendor.businessName} was permanently deleted.`);
+      setPurgingVendor(null);
+      setPurgeConfirmationCheck(false);
+      await loadAdminData(token);
+    } catch (err: any) {
+      setError(err.message || 'Failed to permanently delete vendor data');
+    } finally {
+      setIsPurgingVendor(false);
+    }
+  };
+
   const handleVehicleStatus = async (vehicleId: string, data: { status?: Vehicle['status']; isActive?: boolean; rejectionReason?: string; isDeleted?: boolean; reason?: string }) => {
     if (!token) return;
     try {
@@ -291,8 +315,8 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onClose }) => {
   // RENDER: FULL ADMIN DASHBOARD
   // -------------------------------------------------------------
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/85 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4">
-      <div className="bg-white rounded-3xl max-w-6xl w-full max-h-[94vh] flex flex-col overflow-hidden shadow-2xl">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/85 backdrop-blur-xs flex flex-col items-center justify-start py-4 sm:py-8 px-2 sm:px-4">
+      <div className="bg-white rounded-3xl max-w-6xl w-full h-[88vh] max-h-[850px] flex flex-col overflow-hidden shadow-2xl my-auto">
         {/* Admin Header */}
         <div className="p-4 sm:p-5 border-b border-slate-200 bg-slate-950 text-white flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -341,7 +365,19 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onClose }) => {
           {[
             { id: 'overview', label: 'Dashboard' },
             { id: 'bookings', label: `All Bookings (${bookings.length})` },
-            { id: 'vendors', label: `Vendors (${vendors.length})` },
+            {
+              id: 'vendors',
+              label: (
+                <span className="flex items-center gap-1.5">
+                  <span>Vendors ({vendors.length})</span>
+                  {vendors.filter(v => v.status === 'pending').length > 0 && (
+                    <span className="px-1.5 py-0.2 bg-amber-500 text-slate-900 rounded-full text-[10px] font-extrabold animate-pulse">
+                      {vendors.filter(v => v.status === 'pending').length} New
+                    </span>
+                  )}
+                </span>
+              ),
+            },
             { id: 'vehicles', label: `Fleet Catalog (${vehicles.length})` },
             { id: 'invoices', label: `Invoices (${invoices.length})` },
             { id: 'database', label: `Supabase Sync (${supabaseInfo?.metrics?.totalBookingsInDb ?? 0} in DB)` },
@@ -430,21 +466,36 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onClose }) => {
                   <ul className="text-xs text-slate-600 space-y-2">
                     <li className="flex justify-between items-center p-2 rounded-lg bg-slate-50">
                       <span>Pending Guest Bookings:</span>
-                      <span className="font-bold text-amber-700">
-                        {bookings.filter(b => b.status === 'pending').length}
-                      </span>
+                      <button
+                        onClick={() => setActiveTab('bookings')}
+                        className="font-bold text-amber-700 hover:underline flex items-center gap-1"
+                      >
+                        <span>{bookings.filter(b => b.status === 'pending').length}</span>
+                        <span className="text-[10px] text-amber-600 font-normal">&rarr; View</span>
+                      </button>
                     </li>
                     <li className="flex justify-between items-center p-2 rounded-lg bg-slate-50">
                       <span>Pending Vendor Applications:</span>
-                      <span className="font-bold text-amber-700">
-                        {vendors.filter(v => v.status === 'pending').length}
-                      </span>
+                      <button
+                        onClick={() => {
+                          setVendorFilter('pending');
+                          setActiveTab('vendors');
+                        }}
+                        className="font-bold text-amber-700 hover:underline flex items-center gap-1"
+                      >
+                        <span>{vendors.filter(v => v.status === 'pending').length}</span>
+                        <span className="text-[10px] text-amber-600 font-normal">&rarr; Approve</span>
+                      </button>
                     </li>
                     <li className="flex justify-between items-center p-2 rounded-lg bg-slate-50">
                       <span>Vehicles Needing Approval:</span>
-                      <span className="font-bold text-amber-700">
-                        {vehicles.filter(v => v.status === 'pending_approval').length}
-                      </span>
+                      <button
+                        onClick={() => setActiveTab('vehicles')}
+                        className="font-bold text-amber-700 hover:underline flex items-center gap-1"
+                      >
+                        <span>{vehicles.filter(v => v.status === 'pending_approval').length}</span>
+                        <span className="text-[10px] text-amber-600 font-normal">&rarr; Review</span>
+                      </button>
                     </li>
                   </ul>
                 </div>
@@ -643,10 +694,52 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onClose }) => {
           {/* ================= TAB 3: VENDORS ================= */}
           {activeTab === 'vendors' && (
             <div className="space-y-4">
-              <h3 className="font-bold text-slate-900 text-sm">Registered Rental Vendors</h3>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200">
+                <div>
+                  <h3 className="font-bold text-slate-900 text-sm">Registered Rental Vendors</h3>
+                  <p className="text-xs text-slate-500">
+                    Review incoming vendor applications, verify details, and manage approvals.
+                  </p>
+                </div>
 
+                {/* Filter Pills */}
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {[
+                    { id: 'all', label: `All (${vendors.length})` },
+                    { id: 'pending', label: `Pending (${vendors.filter(v => v.status === 'pending' && !v.isDeleted).length})`, isAlert: vendors.some(v => v.status === 'pending' && !v.isDeleted) },
+                    { id: 'approved', label: `Approved (${vendors.filter(v => v.status === 'approved' && !v.isDeleted).length})` },
+                    { id: 'suspended', label: `Suspended (${vendors.filter(v => v.status === 'suspended' && !v.isDeleted).length})` },
+                    { id: 'rejected', label: `Rejected (${vendors.filter(v => v.status === 'rejected' && !v.isDeleted).length})` },
+                    { id: 'removed', label: `Removed (${vendors.filter(v => v.isDeleted || v.status === 'inactive').length})` },
+                  ].map(f => (
+                    <button
+                      key={f.id}
+                      onClick={() => setVendorFilter(f.id as any)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
+                        vendorFilter === f.id
+                          ? 'bg-slate-900 text-white'
+                          : f.isAlert
+                          ? 'bg-amber-100 text-amber-900 hover:bg-amber-200'
+                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      }`}
+                    >
+                      {f.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Vendors List */}
               <div className="space-y-3">
-                {vendors.map(v => (
+                {vendors
+                  .filter(v => {
+                    if (vendorFilter === 'all') return true;
+                    if (vendorFilter === 'removed') return v.isDeleted || v.status === 'inactive';
+                    if (vendorFilter === 'approved') return v.status === 'approved' && !v.isDeleted;
+                    if (vendorFilter === 'suspended') return v.status === 'suspended' && !v.isDeleted;
+                    return v.status === vendorFilter && !v.isDeleted;
+                  })
+                  .map(v => (
                   <div key={v.id} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div>
                       <div className="flex items-center gap-2">
@@ -658,6 +751,11 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onClose }) => {
                         ) : (
                           <StatusBadge status={v.status} size="sm" />
                         )}
+                        {v.status === 'pending' && (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
+                            Action Required
+                          </span>
+                        )}
                       </div>
                       <p className="text-xs text-slate-600 mt-0.5">
                         Vendor Name: <strong>{v.vendorName}</strong> &bull; {v.serviceLocation} &bull; {v.phone} &bull; {v.email}
@@ -665,6 +763,9 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onClose }) => {
                       {v.rejectionReason && (
                         <p className="text-xs text-rose-700 mt-1">Rejection note: {v.rejectionReason}</p>
                       )}
+                      <div className="text-[11px] text-slate-400 mt-1">
+                        Registered: {new Date(v.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      </div>
                     </div>
 
                     <div className="flex items-center gap-2">
@@ -705,7 +806,10 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onClose }) => {
                       
                       {!v.isDeleted ? (
                         <button
-                          onClick={() => setRemovingVendor(v)}
+                          onClick={() => {
+                            setPurgingVendor(v);
+                            setPurgeConfirmationCheck(true);
+                          }}
                           className="px-3 py-1.5 bg-rose-50 text-rose-700 hover:bg-rose-100 rounded-lg text-xs font-bold"
                         >
                           Remove
@@ -718,9 +822,41 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({ onClose }) => {
                           Restore
                         </button>
                       )}
+
+                      <button
+                        onClick={() => {
+                          setPurgingVendor(v);
+                          setPurgeConfirmationCheck(true);
+                        }}
+                        title="Permanently erase vendor and all fleet data from website"
+                        className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-xs"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Delete All Data</span>
+                      </button>
                     </div>
                   </div>
                 ))}
+
+                {vendors.filter(v => {
+                  if (vendorFilter === 'all') return true;
+                  if (vendorFilter === 'removed') return v.isDeleted || v.status === 'inactive';
+                  if (vendorFilter === 'approved') return v.status === 'approved' && !v.isDeleted;
+                  if (vendorFilter === 'suspended') return v.status === 'suspended' && !v.isDeleted;
+                  return v.status === vendorFilter && !v.isDeleted;
+                }).length === 0 && (
+                  <div className="bg-white p-12 text-center rounded-2xl border border-slate-200">
+                    <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto text-slate-400 mb-3">
+                      <User className="w-6 h-6" />
+                    </div>
+                    <div className="font-bold text-slate-800 text-sm">No vendors match this status</div>
+                    <p className="text-xs text-slate-500 mt-1">
+                      {vendorFilter === 'pending'
+                        ? 'There are currently no pending vendor approval requests.'
+                        : `No vendors found with status "${vendorFilter}".`}
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -1367,6 +1503,25 @@ CREATE POLICY "Allow doc insert" ON public.booking_documents FOR INSERT WITH CHE
                   <option value="Other">Other</option>
                 </select>
               </div>
+
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 flex items-center justify-between gap-3">
+                <div>
+                  <div className="font-bold text-rose-950 text-xs">Want to remove vendor complete data?</div>
+                  <div className="text-[11px] text-rose-800">Permanently erase vendor, fleet vehicles, and database records.</div>
+                </div>
+                <button
+                  onClick={() => {
+                    const target = removingVendor;
+                    setRemovingVendor(null);
+                    setPurgingVendor(target);
+                    setPurgeConfirmationCheck(false);
+                  }}
+                  className="px-3 py-1.5 bg-rose-700 hover:bg-rose-800 text-white rounded-lg text-xs font-bold shrink-0"
+                >
+                  Permanent Purge
+                </button>
+              </div>
+
               <div className="flex justify-end gap-2 pt-2">
                 <button
                   onClick={() => { setRemovingVendor(null); setRemovingReason(''); }}
@@ -1375,10 +1530,100 @@ CREATE POLICY "Allow doc insert" ON public.booking_documents FOR INSERT WITH CHE
                   Cancel
                 </button>
                 <button
-                  onClick={() => handleVendorStatus(removingVendor.id, { isDeleted: true, status: 'inactive', reason: removingReason })}
+                  onClick={() => {
+                    setPurgingVendor(removingVendor);
+                    setPurgeConfirmationCheck(false);
+                    setRemovingVendor(null);
+                  }}
                   className="px-5 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold shadow-lg shadow-rose-200"
                 >
-                  Remove Vendor
+                  Permanently Delete Vendor
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal: Permanently Delete Vendor Complete Data */}
+        {purgingVendor && (
+          <div className="fixed inset-0 z-60 bg-slate-900/80 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4 border-2 border-rose-600">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                <h3 className="font-extrabold text-rose-700 text-base flex items-center gap-2">
+                  <Trash2 className="w-5 h-5 text-rose-600" /> Remove Vendor Complete Data
+                </h3>
+                <button
+                  onClick={() => { setPurgingVendor(null); setPurgeConfirmationCheck(false); }}
+                  className="text-slate-400 hover:text-slate-600"
+                >
+                  <XCircle className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 text-xs space-y-1.5 text-rose-900">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+                  <div>
+                    <strong className="font-bold text-rose-950 block text-sm">Permanent Erasure Warning</strong>
+                    <span>This action will permanently wipe this vendor and all associated fleet vehicles from the website and Supabase database. This action cannot be undone.</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 text-xs space-y-1 text-slate-700">
+                <div><strong>Business Name:</strong> {purgingVendor.businessName}</div>
+                <div><strong>Vendor Contact:</strong> {purgingVendor.vendorName} ({purgingVendor.phone})</div>
+                <div><strong>Registered Email:</strong> {purgingVendor.email}</div>
+                <div><strong>Service Location:</strong> {purgingVendor.serviceLocation}</div>
+                <div><strong>Fleet Vehicles to Delete:</strong> {vehicles.filter(v => v.vendorId === purgingVendor.id || (purgingVendor.userId && v.vendorId === purgingVendor.userId)).length} vehicles</div>
+              </div>
+
+              <div className="text-xs space-y-2 text-slate-600">
+                <div className="font-bold text-slate-800">What will be permanently wiped:</div>
+                <ul className="list-disc list-inside space-y-1 text-slate-600">
+                  <li>Vendor account and all administrative profiles on GoaMate</li>
+                  <li>All {vehicles.filter(v => v.vendorId === purgingVendor.id || (purgingVendor.userId && v.vendorId === purgingVendor.userId)).length} fleet vehicles belonging to this vendor (removed from website & search)</li>
+                  <li>All direct customer booking links for this vendor's vehicles</li>
+                  <li>Database records from Supabase (<code className="bg-slate-100 px-1 py-0.5 rounded text-[11px]">vendors</code>, <code className="bg-slate-100 px-1 py-0.5 rounded text-[11px]">vendor_profiles</code>, <code className="bg-slate-100 px-1 py-0.5 rounded text-[11px]">vehicles</code>)</li>
+                </ul>
+              </div>
+
+              <div className="pt-2 border-t border-slate-100">
+                <label className="flex items-start gap-2.5 text-xs font-semibold text-slate-800 cursor-pointer select-none bg-rose-50/60 p-3 rounded-xl border border-rose-100">
+                  <input
+                    type="checkbox"
+                    checked={purgeConfirmationCheck}
+                    onChange={(e) => setPurgeConfirmationCheck(e.target.checked)}
+                    className="mt-0.5 w-4 h-4 rounded text-rose-600 focus:ring-rose-500 border-slate-300"
+                  />
+                  <span>I confirm that I want to permanently remove this vendor's complete data from this website.</span>
+                </label>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  onClick={() => { setPurgingVendor(null); setPurgeConfirmationCheck(false); }}
+                  disabled={isPurgingVendor}
+                  className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDeleteVendorPermanently}
+                  disabled={!purgeConfirmationCheck || isPurgingVendor}
+                  className="px-5 py-2 bg-rose-600 hover:bg-rose-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold shadow-lg shadow-rose-200 flex items-center gap-2"
+                >
+                  {isPurgingVendor ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Purging Vendor Data...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Permanently Delete Vendor Complete Data</span>
+                    </>
+                  )}
                 </button>
               </div>
             </div>

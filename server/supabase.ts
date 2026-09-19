@@ -445,9 +445,129 @@ export async function saveVendorToSupabase(vendor: Vendor): Promise<{ success: b
 
     const { error } = await supabase.from('vendors').upsert(vendorRow, { onConflict: 'id' });
     if (error) throw error;
+
+    // Synchronize approval_status in vendor_profiles if user_id or email matches
+    try {
+      const mappedApprovalStatus = (vendor.status === 'approved' && !vendor.isDeleted) ? 'approved' : 
+        (vendor.status === 'suspended') ? 'suspended' : 
+        (vendor.status === 'rejected') ? 'rejected' : 
+        (vendor.status === 'inactive' || vendor.isDeleted) ? 'suspended' : 'pending';
+
+      if (vendor.userId) {
+        await supabase
+          .from('vendor_profiles')
+          .update({ approval_status: mappedApprovalStatus })
+          .eq('user_id', vendor.userId);
+      }
+      if (vendor.id && vendor.id.startsWith('profile-')) {
+        const pId = vendor.id.replace('profile-', '');
+        await supabase
+          .from('vendor_profiles')
+          .update({ approval_status: mappedApprovalStatus })
+          .eq('id', pId);
+      }
+      if (vendor.email) {
+        await supabase
+          .from('vendor_profiles')
+          .update({ approval_status: mappedApprovalStatus })
+          .ilike('email', vendor.email);
+      }
+    } catch {
+      // vendor_profiles might not exist yet or user not linked
+    }
+
     return { success: true };
   } catch (err: any) {
     return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Permanently removes all data for a vendor from Supabase tables:
+ * - vehicles belonging to this vendor
+ * - unlinks or cleans up booking references
+ * - vendor invoices
+ * - vendor row in public.vendors
+ * - vendor profile in public.vendor_profiles
+ */
+export async function deleteVendorPermanentlyFromSupabase(
+  vendorId: string,
+  userId?: string,
+  email?: string
+): Promise<{ success: boolean; deletedVehiclesCount: number; error?: string }> {
+  if (!supabase) return { success: true, deletedVehiclesCount: 0 };
+
+  try {
+    let deletedVehiclesCount = 0;
+    const vendorIdsToMatch = Array.from(new Set([vendorId, ...(userId ? [userId] : [])]));
+
+    // 1. Delete all vehicles belonging to this vendor from vehicles table
+    for (const vid of vendorIdsToMatch) {
+      try {
+        const { data: vehData } = await supabase.from('vehicles').select('id').eq('vendor_id', vid);
+        if (vehData && vehData.length > 0) {
+          deletedVehiclesCount += vehData.length;
+          const { error: delVehErr } = await supabase.from('vehicles').delete().eq('vendor_id', vid);
+          if (delVehErr) {
+            console.warn(`[Supabase] Notice deleting vehicles for vendor ${vid}:`, delVehErr.message);
+          }
+        }
+      } catch (vehErr: any) {
+        console.warn(`[Supabase] Exception checking vehicles for ${vid}:`, vehErr.message);
+      }
+    }
+
+    // 2. Unlink vendor_id on bookings so historical booking records do not violate FK or break
+    for (const vid of vendorIdsToMatch) {
+      try {
+        await supabase.from('bookings').update({ vendor_id: null }).eq('vendor_id', vid);
+      } catch (bErr: any) {
+        console.warn(`[Supabase] Notice unlinking bookings for vendor ${vid}:`, bErr.message);
+      }
+    }
+
+    // 3. Remove invoices for this vendor
+    for (const vid of vendorIdsToMatch) {
+      try {
+        await supabase.from('invoices').delete().eq('vendor_id', vid);
+      } catch (invErr: any) {
+        console.warn(`[Supabase] Notice deleting invoices for vendor ${vid}:`, invErr.message);
+      }
+    }
+
+    // 4. Delete from public.vendors table
+    try {
+      await supabase.from('vendors').delete().eq('id', vendorId);
+      if (userId) {
+        await supabase.from('vendors').delete().eq('user_id', userId);
+      }
+      if (email) {
+        await supabase.from('vendors').delete().ilike('email', email);
+      }
+    } catch (venErr: any) {
+      console.warn(`[Supabase] Notice deleting row from vendors:`, venErr.message);
+    }
+
+    // 5. Delete from public.vendor_profiles table
+    try {
+      if (vendorId.startsWith('profile-')) {
+        const pId = vendorId.replace('profile-', '');
+        await supabase.from('vendor_profiles').delete().eq('id', pId);
+      }
+      if (userId) {
+        await supabase.from('vendor_profiles').delete().eq('user_id', userId);
+      }
+      if (email) {
+        await supabase.from('vendor_profiles').delete().ilike('email', email);
+      }
+    } catch (vpErr: any) {
+      console.warn(`[Supabase] Notice deleting row from vendor_profiles:`, vpErr.message);
+    }
+
+    return { success: true, deletedVehiclesCount };
+  } catch (err: any) {
+    console.error('[Supabase] Error deleting vendor permanently:', err.message);
+    return { success: false, deletedVehiclesCount: 0, error: err.message };
   }
 }
 
@@ -480,6 +600,79 @@ export async function fetchVendorsFromSupabase(): Promise<{ success: boolean; ve
   } catch (err: any) {
     return { success: false, vendors: [], error: err.message };
   }
+}
+
+export async function fetchAllVendorsCombined(): Promise<Vendor[]> {
+  const combinedMap = new Map<string, Vendor>();
+
+  // 1. First load from memory/hardcoded fallback
+  // Handled in caller
+
+  // 2. Load from Supabase vendors table
+  if (supabase) {
+    try {
+      const { vendors: supaVendors } = await fetchVendorsFromSupabase();
+      for (const v of supaVendors) {
+        combinedMap.set(v.id, v);
+      }
+    } catch (e: any) {
+      console.warn('[Supabase] Failed to fetch vendors table:', e.message);
+    }
+
+    // 3. Also load from Supabase vendor_profiles table (new registrations)
+    try {
+      const { data: profiles, error } = await supabase
+        .from('vendor_profiles')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (!error && Array.isArray(profiles)) {
+        for (const p of profiles) {
+          const profileId = `profile-${p.id}`;
+          const existing = Array.from(combinedMap.values()).find(
+            v => (v.userId && v.userId === p.user_id) || (p.email && v.email.toLowerCase() === p.email.toLowerCase())
+          );
+
+          if (existing) {
+            // Keep status in sync with vendor_profiles, but preserve administrative actions:
+            // If the vendor has been suspended, deactivated, removed, or rejected by admin, DO NOT revert to 'approved'
+            const adminLockedStatuses = ['suspended', 'inactive', 'rejected'];
+            if (!adminLockedStatuses.includes(existing.status) && !existing.isDeleted) {
+              if (p.approval_status) {
+                existing.status = p.approval_status as any;
+              }
+            } else if (p.approval_status && adminLockedStatuses.includes(p.approval_status)) {
+              // If vendor_profiles itself holds a suspended/rejected status, reflect it
+              existing.status = p.approval_status as any;
+            }
+            existing.userId = p.user_id;
+            if (p.full_name) existing.vendorName = p.full_name;
+            if (p.business_name) existing.businessName = p.business_name;
+          } else {
+            // Add as a registered vendor awaiting admin approval
+            const newVendorFromProfile: Vendor = {
+              id: profileId,
+              userId: p.user_id,
+              businessName: p.business_name || 'Vendor Partner',
+              vendorName: p.full_name || 'Partner',
+              phone: p.phone || '',
+              whatsapp: p.whatsapp || p.phone || '',
+              email: p.email || (p.user_id ? `${p.user_id.slice(0, 8)}@vendor.goamate` : 'unknown@goamate.com'),
+              serviceLocation: p.area ? `${p.area}${p.address ? `, ${p.address}` : ''}` : 'Margao, Goa',
+              status: (p.approval_status as any) || 'pending',
+              vehicleCount: 0,
+              createdAt: p.created_at || new Date().toISOString(),
+            };
+            combinedMap.set(profileId, newVendorFromProfile);
+          }
+        }
+      }
+    } catch (profileErr: any) {
+      console.warn('[Supabase] Notice querying vendor_profiles:', profileErr.message);
+    }
+  }
+
+  return Array.from(combinedMap.values());
 }
 
 export async function saveVehicleToSupabase(vehicle: Vehicle): Promise<{ success: boolean; error?: string }> {
@@ -747,7 +940,21 @@ export async function saveInvoiceToSupabase(invoice: Invoice): Promise<{ success
 
   try {
     const row = mapInvoiceToRow(invoice);
-    const { error } = await supabase.from('invoices').upsert(row, { onConflict: 'id' });
+    const fallbackRow = {
+      ...row,
+      booking_id: null,
+      vehicle_id: null,
+      vendor_id: null,
+    };
+
+    let { error } = await supabase.from('invoices').upsert(row, { onConflict: 'id' });
+
+    if (error && (error.code === '23503' || error.message.includes('foreign key constraint'))) {
+      console.warn(`[Supabase] Invoice foreign key missing. Retrying with unlinked invoice fallback row...`);
+      const retry = await supabase.from('invoices').upsert(fallbackRow, { onConflict: 'id' });
+      error = retry.error;
+    }
+
     if (error) {
       console.warn('⚠️ Supabase saveInvoice error:', error.message);
       return { success: false, error: error.message };

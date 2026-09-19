@@ -8,6 +8,7 @@ interface FooterProps {
   onSelectCategory?: (cat: string) => void;
   onOpenTracker?: () => void;
   onOpenVendor: () => void;
+  onOpenVendorRegister?: () => void;
   onOpenAdmin: () => void;
   onNavigate?: (view: string) => void;
 }
@@ -17,6 +18,7 @@ export const Footer: React.FC<FooterProps> = ({
   onSelectCategory,
   onOpenTracker,
   onOpenVendor,
+  onOpenVendorRegister,
   onOpenAdmin,
   onNavigate,
 }) => {
@@ -200,6 +202,16 @@ export const Footer: React.FC<FooterProps> = ({
                   Vendor Partner Portal
                 </button>
               </li>
+              {onOpenVendorRegister && (
+                <li>
+                  <button
+                    onClick={onOpenVendorRegister}
+                    className="hover:text-emerald-400 text-emerald-300 font-medium transition-colors text-left cursor-pointer"
+                  >
+                    Register as Vendor Partner
+                  </button>
+                </li>
+              )}
             </ul>
           </div>
 

@@ -46,12 +46,14 @@ import {
   fetchVehiclesFromSupabase,
   saveVendorToSupabase,
   saveVehicleToSupabase,
+  fetchAllVendorsCombined,
   getSyncState,
   refreshSupabaseMetrics,
   seedSupabaseFleet,
   saveInvoiceToSupabase,
   updateInvoiceInSupabase,
   fetchInvoicesFromSupabase,
+  deleteVendorPermanentlyFromSupabase,
 } from './supabase';
 import { SAMPLE_DL_FRONT, SAMPLE_DL_BACK, SAMPLE_AADHAAR_FRONT } from './sampleDocs';
 
@@ -437,7 +439,7 @@ apiRouter.post('/bookings', (req, res) => {
     deliveryFee = matchedArea.deliveryCharge;
   }
 
-  const linkVendor = vendors.find(v => v.id === link.vendorId);
+  const linkVendor = matchedDirectLink ? vendors.find(v => v.id === matchedDirectLink.vendorId) : undefined;
   const calc = calculateRentalPricing({
     pickupDatetime,
     returnDatetime,
@@ -736,6 +738,53 @@ apiRouter.post('/vendor/register', async (req, res) => {
   });
 });
 
+// Synchronize vendor registered via Supabase Auth into platform memory/list
+apiRouter.post('/vendor/register-supabase-sync', async (req, res) => {
+  const { userId, fullName, businessName, email, phone, whatsapp, address, area } = req.body;
+  if (!email) {
+    return res.status(400).json({ error: 'Email is required.' });
+  }
+
+  let existing = vendors.find(v => v.email.toLowerCase() === email.toLowerCase() || (userId && v.userId === userId));
+  if (!existing) {
+    const vendorId = `vendor-${userId || crypto.randomUUID()}`;
+    const newVendor: Vendor = {
+      id: vendorId,
+      userId: userId || `user-${crypto.randomUUID()}`,
+      businessName: (businessName || fullName || 'Vendor Partner').trim(),
+      vendorName: (fullName || 'Partner').trim(),
+      phone: (phone || '').trim(),
+      whatsapp: (whatsapp || phone || '').trim(),
+      email: email.trim().toLowerCase(),
+      serviceLocation: area ? `${area}${address ? `, ${address}` : ''}` : 'Margao, Goa',
+      status: 'pending', // Pending super-admin approval
+      vehicleCount: 0,
+      createdAt: new Date().toISOString(),
+    };
+    vendors.push(newVendor);
+    existing = newVendor;
+
+    recordAuditLog({
+      action: 'VENDOR_REGISTERED',
+      entityType: 'vendor',
+      entityId: vendorId,
+      details: { businessName, vendorName: fullName, email, authProvider: 'supabase' },
+    });
+  } else {
+    if (userId) existing.userId = userId;
+    if (fullName) existing.vendorName = fullName;
+    if (businessName) existing.businessName = businessName;
+    if (phone) existing.phone = phone;
+    if (whatsapp) existing.whatsapp = whatsapp;
+  }
+
+  if (isSupabaseConfigured && existing) {
+    await saveVendorToSupabase(existing).catch(() => {});
+  }
+
+  res.json({ success: true, vendor: existing });
+});
+
 apiRouter.post('/vendor/login', (req, res) => {
   const { email, password } = req.body;
   const vendor = vendors.find(
@@ -840,6 +889,70 @@ apiRouter.patch('/vendor/settings', requireVendor, (req, res) => {
   res.json({ success: true, vendor });
 });
 
+// Self-service vendor account and data removal
+apiRouter.delete('/vendor/account', requireVendor, async (req, res) => {
+  const vendor = (req as any).vendor as Vendor;
+  const vendorIdsToMatch = Array.from(new Set([vendor.id, ...(vendor.userId ? [vendor.userId] : [])]));
+
+  // 1. Remove vehicles
+  const vehiclesToDelete = vehicles.filter(v => 
+    vendorIdsToMatch.includes(v.vendorId) ||
+    (vendor.userId && v.vendorId === vendor.userId)
+  );
+  const vehicleIdsToDelete = vehiclesToDelete.map(v => v.id);
+
+  for (let i = vehicles.length - 1; i >= 0; i--) {
+    if (vehicleIdsToDelete.includes(vehicles[i].id) || vendorIdsToMatch.includes(vehicles[i].vendorId)) {
+      vehicles.splice(i, 1);
+    }
+  }
+
+  // 2. Remove direct links
+  for (let i = bookingFormLinks.length - 1; i >= 0; i--) {
+    if (vehicleIdsToDelete.includes(bookingFormLinks[i].vehicleId)) {
+      bookingFormLinks.splice(i, 1);
+    }
+  }
+
+  // 3. Unlink vendor from bookings
+  bookings.forEach(b => {
+    if (vendorIdsToMatch.includes(b.vendorId || '')) {
+      b.vendorId = undefined;
+    }
+  });
+
+  // 4. Remove vendor from in-memory array
+  const vEmail = vendor.email?.toLowerCase();
+  for (let i = vendors.length - 1; i >= 0; i--) {
+    const v = vendors[i];
+    if (
+      vendorIdsToMatch.includes(v.id) ||
+      (vendor.userId && v.userId === vendor.userId) ||
+      (vEmail && v.email && v.email.toLowerCase() === vEmail)
+    ) {
+      vendors.splice(i, 1);
+    }
+  }
+
+  // 5. Supabase purge
+  if (isSupabaseConfigured) {
+    await deleteVendorPermanentlyFromSupabase(vendor.id, vendor.userId, vendor.email);
+  }
+
+  recordAuditLog({
+    action: 'VENDOR_SELF_DELETED',
+    entityType: 'vendor',
+    entityId: vendor.id,
+    actorName: vendor.vendorName,
+    details: { businessName: vendor.businessName, email: vendor.email, deletedVehiclesCount: vehiclesToDelete.length },
+  });
+
+  res.json({
+    success: true,
+    message: 'Your vendor account and all associated fleet vehicles have been completely removed.',
+  });
+});
+
 apiRouter.get('/vendor/vehicles', requireVendor, (req, res) => {
   const vendor = (req as any).vendor as Vendor;
   const list = vehicles.filter(v => v.vendorId === vendor.id);
@@ -937,10 +1050,7 @@ apiRouter.patch('/vendor/vehicles/:id/availability', requireVendor, (req, res) =
 
 apiRouter.get('/vendor/bookings', requireVendor, (req, res) => {
   const vendor = (req as any).vendor as Vendor;
-  let list = bookings.filter(b => b.vendorId === vendor.id);
-  if (list.length === 0 && (vendor.id === 'platform-default' || vendor.id.startsWith('vendor-') || bookings.every(b => b.vendorId === 'platform-default'))) {
-    list = bookings;
-  }
+  const list = bookings.filter(b => b.vendorId === vendor.id);
   res.json(list);
 });
 
@@ -1120,7 +1230,25 @@ apiRouter.patch('/bookings/:id/status', (req, res) => {
   res.json({ success: true, booking });
 });
 
-apiRouter.get('/admin/vendors', requireSuperAdmin, (req, res) => {
+apiRouter.get('/admin/vendors', requireSuperAdmin, async (req, res) => {
+  if (isSupabaseConfigured) {
+    try {
+      const combined = await fetchAllVendorsCombined();
+      if (combined && combined.length > 0) {
+        // Merge into local in-memory vendors array
+        for (const cv of combined) {
+          const idx = vendors.findIndex(v => v.id === cv.id || (v.userId && cv.userId && v.userId === cv.userId) || (v.email && cv.email && v.email.toLowerCase() === cv.email.toLowerCase()));
+          if (idx >= 0) {
+            vendors[idx] = { ...vendors[idx], ...cv };
+          } else {
+            vendors.push(cv);
+          }
+        }
+      }
+    } catch (err: any) {
+      console.warn('[Admin] Notice syncing vendors for admin list:', err.message);
+    }
+  }
   res.json(vendors);
 });
 
@@ -1128,13 +1256,26 @@ apiRouter.patch('/admin/vendors/:id/status', requireSuperAdmin, async (req, res)
   const { id } = req.params;
   const { status, isDeleted, reason } = req.body;
   
-  const vendor = vendors.find(v => v.id === id);
+  let vendor = vendors.find(v => v.id === id || v.userId === id);
+  if (!vendor) {
+    // If not found in memory, try looking up in Supabase
+    if (isSupabaseConfigured) {
+      const combined = await fetchAllVendorsCombined();
+      vendor = combined.find(v => v.id === id || v.userId === id);
+      if (vendor) {
+        vendors.push(vendor);
+      }
+    }
+  }
+
   if (!vendor) return res.status(404).json({ error: 'Vendor not found' });
   
   const prevStatus = vendor.status;
   const prevIsDeleted = vendor.isDeleted;
   
   if (status) vendor.status = status;
+  if (reason) vendor.rejectionReason = reason;
+  if (status === 'approved') vendor.rejectionReason = undefined;
   if (isDeleted !== undefined) {
     vendor.isDeleted = isDeleted;
     if (isDeleted) {
@@ -1143,7 +1284,7 @@ apiRouter.patch('/admin/vendors/:id/status', requireSuperAdmin, async (req, res)
       vendor.status = 'inactive';
       
       // Suspend/Deactivate all vehicles of this vendor
-      vehicles.filter(v => v.vendorId === id).forEach(v => {
+      vehicles.filter(v => v.vendorId === vendor!.id || v.vendorId === id || (vendor!.userId && v.vendorId === vendor!.userId)).forEach(v => {
         v.isActive = false;
         v.status = 'inactive';
         v.updatedAt = new Date().toISOString();
@@ -1154,6 +1295,27 @@ apiRouter.patch('/admin/vendors/:id/status', requireSuperAdmin, async (req, res)
       vendor.deletedBy = undefined;
     }
   }
+
+  // Also suspend vehicles if vendor is explicitly suspended
+  if (status === 'suspended') {
+    vehicles.filter(v => v.vendorId === vendor!.id || v.vendorId === id || (vendor!.userId && v.vendorId === vendor!.userId)).forEach(v => {
+      v.isActive = false;
+      v.status = 'inactive';
+      v.updatedAt = new Date().toISOString();
+      if (isSupabaseConfigured) saveVehicleToSupabase(v);
+    });
+  }
+
+  // Synchronize any duplicate references or aliases in the in-memory vendors array
+  vendors.forEach(v => {
+    if (v.id === vendor!.id || (v.userId && v.userId === vendor!.userId) || (v.email && v.email.toLowerCase() === vendor!.email.toLowerCase())) {
+      v.status = vendor!.status;
+      v.isDeleted = vendor!.isDeleted;
+      v.deletedAt = vendor!.deletedAt;
+      v.deletedBy = vendor!.deletedBy;
+      v.rejectionReason = vendor!.rejectionReason;
+    }
+  });
   
   recordAuditLog({
     action: isDeleted ? 'VENDOR_REMOVED' : status === 'suspended' ? 'VENDOR_SUSPENDED' : status === 'inactive' ? 'VENDOR_DEACTIVATED' : 'VENDOR_STATUS_UPDATED',
@@ -1168,6 +1330,106 @@ apiRouter.patch('/admin/vendors/:id/status', requireSuperAdmin, async (req, res)
   
   res.json({ success: true, vendor });
 });
+
+// Permanently purge vendor and all associated fleet data from the platform
+const handlePermanentVendorDeletion = async (req: Request, res: Response) => {
+  const { id } = req.params;
+
+  let vendor = vendors.find(v => v.id === id || v.userId === id);
+  if (!vendor && isSupabaseConfigured) {
+    const combined = await fetchAllVendorsCombined();
+    vendor = combined.find(v => v.id === id || v.userId === id);
+  }
+
+  if (!vendor) {
+    return res.status(404).json({ error: 'Vendor not found on platform.' });
+  }
+
+  const vendorIdsToMatch = Array.from(new Set([
+    vendor.id,
+    id,
+    ...(vendor.userId ? [vendor.userId] : []),
+  ]));
+
+  // 1. Identify all vehicles associated with this vendor
+  const vehiclesToDelete = vehicles.filter(v => 
+    vendorIdsToMatch.includes(v.vendorId) ||
+    (vendor!.userId && v.vendorId === vendor!.userId)
+  );
+  const vehicleIdsToDelete = vehiclesToDelete.map(v => v.id);
+
+  // 2. Remove all those vehicles from in-memory vehicles array
+  for (let i = vehicles.length - 1; i >= 0; i--) {
+    if (vehicleIdsToDelete.includes(vehicles[i].id) || vendorIdsToMatch.includes(vehicles[i].vendorId)) {
+      vehicles.splice(i, 1);
+    }
+  }
+
+  // 3. Remove direct customer booking links for those vehicles
+  for (let i = bookingFormLinks.length - 1; i >= 0; i--) {
+    if (vehicleIdsToDelete.includes(bookingFormLinks[i].vehicleId)) {
+      bookingFormLinks.splice(i, 1);
+    }
+  }
+
+  // 4. Safely unlink vendor_id on bookings (keeps booking history without crashing or broken foreign keys)
+  bookings.forEach(b => {
+    if (vendorIdsToMatch.includes(b.vendorId || '')) {
+      b.vendorId = undefined;
+    }
+  });
+
+  // 5. Unlink or clean up invoices
+  invoices.forEach(inv => {
+    if (vendorIdsToMatch.includes(inv.vendorId || '')) {
+      inv.vendorId = 'PURGED_VENDOR';
+    }
+  });
+
+  // 6. Remove vendor from in-memory vendors list
+  const vEmail = vendor.email?.toLowerCase();
+  for (let i = vendors.length - 1; i >= 0; i--) {
+    const v = vendors[i];
+    if (
+      vendorIdsToMatch.includes(v.id) ||
+      (vendor.userId && v.userId === vendor.userId) ||
+      (vEmail && v.email && v.email.toLowerCase() === vEmail)
+    ) {
+      vendors.splice(i, 1);
+    }
+  }
+
+  // 7. Supabase permanent purge
+  let supaResult = { success: true, deletedVehiclesCount: 0 };
+  if (isSupabaseConfigured) {
+    supaResult = await deleteVendorPermanentlyFromSupabase(vendor.id, vendor.userId, vendor.email);
+  }
+
+  // 8. Record audit log
+  recordAuditLog({
+    action: 'VENDOR_PERMANENTLY_PURGED',
+    entityType: 'vendor',
+    entityId: id,
+    actorName: 'Super Admin',
+    details: {
+      businessName: vendor.businessName,
+      vendorName: vendor.vendorName,
+      email: vendor.email,
+      phone: vendor.phone,
+      deletedVehiclesCount: vehiclesToDelete.length,
+      supabaseResult: supaResult,
+    },
+  });
+
+  res.json({
+    success: true,
+    message: `Vendor "${vendor.businessName}" and all associated data (${vehiclesToDelete.length} fleet vehicles) were permanently removed from the website and database.`,
+    deletedVehiclesCount: vehiclesToDelete.length,
+  });
+};
+
+apiRouter.delete('/admin/vendors/:id', requireSuperAdmin, handlePermanentVendorDeletion);
+apiRouter.post('/admin/vendors/:id/purge', requireSuperAdmin, handlePermanentVendorDeletion);
 
 apiRouter.get('/admin/vehicles', requireSuperAdmin, (req, res) => {
   res.json(vehicles);

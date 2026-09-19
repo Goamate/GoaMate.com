@@ -28,10 +28,14 @@ Allow: /contact
 Allow: /terms
 Allow: /privacy
 Allow: /cancellation
+Allow: /vendor/register
 
 # Keep protected dashboards and private tokens out of search index
 Disallow: /admin
-Disallow: /vendor
+Disallow: /vendor/dashboard
+Disallow: /vendor/bookings
+Disallow: /vendor/invoices
+Disallow: /vendor/links
 Disallow: /book/link
 Disallow: /api/
 
@@ -106,6 +110,12 @@ Sitemap: https://goamate.com/sitemap.xml
     <lastmod>${today}</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://goamate.com/vendor/register</loc>
+    <lastmod>${today}</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
   </url>
 </urlset>`
     );

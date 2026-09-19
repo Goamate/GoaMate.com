@@ -9,9 +9,33 @@ BEGIN
   IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'vendors') THEN
     ALTER TABLE public.vendors ADD COLUMN IF NOT EXISTS vehicle_count INT DEFAULT 0;
   END IF;
+  IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'vendor_profiles') THEN
+    ALTER TABLE public.vendor_profiles ADD COLUMN IF NOT EXISTS full_name TEXT;
+    ALTER TABLE public.vendor_profiles ADD COLUMN IF NOT EXISTS business_name TEXT;
+    ALTER TABLE public.vendor_profiles ADD COLUMN IF NOT EXISTS phone TEXT;
+    ALTER TABLE public.vendor_profiles ADD COLUMN IF NOT EXISTS whatsapp TEXT;
+    ALTER TABLE public.vendor_profiles ADD COLUMN IF NOT EXISTS address TEXT;
+    ALTER TABLE public.vendor_profiles ADD COLUMN IF NOT EXISTS area TEXT;
+    ALTER TABLE public.vendor_profiles ADD COLUMN IF NOT EXISTS approval_status TEXT DEFAULT 'pending';
+  END IF;
 END $$;
 
--- 1. Create Vendors Table
+-- 1. Create Vendor Profiles Table (Supabase Auth user linkage & RLS)
+CREATE TABLE IF NOT EXISTS public.vendor_profiles (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL UNIQUE REFERENCES auth.users(id) ON DELETE CASCADE,
+  full_name TEXT NOT NULL,
+  business_name TEXT NOT NULL,
+  phone TEXT NOT NULL,
+  whatsapp TEXT,
+  address TEXT NOT NULL,
+  area TEXT NOT NULL,
+  approval_status TEXT NOT NULL DEFAULT 'pending', -- 'pending', 'approved', 'rejected', 'suspended'
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- 1b. Create Vendors Table (Fleet Directory & Partner Operational Records)
 CREATE TABLE IF NOT EXISTS public.vendors (
   id TEXT PRIMARY KEY,
   user_id TEXT,
@@ -170,10 +194,13 @@ CREATE INDEX IF NOT EXISTS idx_invoices_number ON public.invoices(invoice_number
 CREATE INDEX IF NOT EXISTS idx_invoices_booking_id ON public.invoices(booking_id);
 CREATE INDEX IF NOT EXISTS idx_invoices_vendor_id ON public.invoices(vendor_id);
 CREATE INDEX IF NOT EXISTS idx_invoices_payment_status ON public.invoices(payment_status);
+CREATE INDEX IF NOT EXISTS idx_vendor_profiles_user_id ON public.vendor_profiles(user_id);
+CREATE INDEX IF NOT EXISTS idx_vendor_profiles_approval_status ON public.vendor_profiles(approval_status);
 
 -- ==============================================================================
 -- Row-Level Security (RLS) Setup
 -- ==============================================================================
+ALTER TABLE public.vendor_profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.vendors ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.vehicles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.bookings ENABLE ROW LEVEL SECURITY;
@@ -181,6 +208,31 @@ ALTER TABLE public.booking_documents ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.service_areas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.site_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.invoices ENABLE ROW LEVEL SECURITY;
+
+-- Vendor Profiles Policies (Vendors can only view and update their own profile; insert during signup)
+DROP POLICY IF EXISTS "Vendors can view own profile" ON public.vendor_profiles;
+DROP POLICY IF EXISTS "Vendors can insert own profile" ON public.vendor_profiles;
+DROP POLICY IF EXISTS "Vendors can update own profile" ON public.vendor_profiles;
+DROP POLICY IF EXISTS "Service role full access vendor_profiles" ON public.vendor_profiles;
+
+CREATE POLICY "Vendors can view own profile"
+  ON public.vendor_profiles
+  FOR SELECT
+  TO authenticated
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Vendors can insert own profile"
+  ON public.vendor_profiles
+  FOR INSERT
+  TO authenticated
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Vendors can update own profile"
+  ON public.vendor_profiles
+  FOR UPDATE
+  TO authenticated
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
 
 -- Vendors Policies
 DROP POLICY IF EXISTS "Allow public vendors select" ON public.vendors;

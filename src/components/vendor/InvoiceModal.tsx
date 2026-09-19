@@ -148,7 +148,7 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
 
   const initFormDefaults = () => {
     const days = booking.daysCount || 1;
-    const vehicleName = booking.vehicle?.name || booking.priceSnapshot?.vehicleDetails?.name || 'Vehicle Rental';
+    const vehicleName = booking.vehicle?.name || (booking.priceSnapshot as any)?.vehicleDetails?.name || 'Vehicle Rental';
     const rentalCharge = (booking.dailyRate || 0) * days;
 
     const initialItems: InvoiceItem[] = [
@@ -935,12 +935,12 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                     <Bike className="w-5 h-5" /> VEHICLE DETAILS
                   </div>
                   <div className="p-4 text-xs flex-1 space-y-2">
-                    <div className="grid grid-cols-[100px_1fr]"><span className="text-slate-600 font-semibold">Vehicle Type:</span><span className="font-semibold text-slate-800">{currentInvoice?.vehicleDetails?.type || booking.vehicleCategory}</span></div>
-                    <div className="grid grid-cols-[100px_1fr]"><span className="text-slate-600 font-semibold">Vehicle Name:</span><span className="font-semibold text-slate-800">{currentInvoice?.vehicleDetails?.name || booking.vehicleName}</span></div>
+                    <div className="grid grid-cols-[100px_1fr]"><span className="text-slate-600 font-semibold">Vehicle Type:</span><span className="font-semibold text-slate-800">{currentInvoice?.vehicleDetails?.type || booking.vehicle?.category || (booking as any).vehicleCategory || '-'}</span></div>
+                    <div className="grid grid-cols-[100px_1fr]"><span className="text-slate-600 font-semibold">Vehicle Name:</span><span className="font-semibold text-slate-800">{currentInvoice?.vehicleDetails?.name || booking.vehicle?.name || (booking as any).vehicleName || '-'}</span></div>
                     <div className="grid grid-cols-[100px_1fr]"><span className="text-slate-600 font-semibold">Brand:</span><span className="font-semibold text-slate-800">{currentInvoice?.vehicleDetails?.name?.split(' ')[0] || '-'}</span></div>
                     <div className="grid grid-cols-[100px_1fr]"><span className="text-slate-600 font-semibold">Model:</span><span className="font-semibold text-slate-800">{currentInvoice?.vehicleDetails?.name?.split(' ').slice(1).join(' ') || '-'}</span></div>
                     <div className="grid grid-cols-[100px_1fr]"><span className="text-slate-600 font-semibold">Registration No:</span><span className="font-semibold text-slate-800 uppercase">{currentInvoice?.vehicleDetails?.registrationNumber || 'Pending'}</span></div>
-                    <div className="grid grid-cols-[100px_1fr]"><span className="text-slate-600 font-semibold">Vendor:</span><span className="font-semibold text-slate-800">{booking.vendorName || '-'}</span></div>
+                    <div className="grid grid-cols-[100px_1fr]"><span className="text-slate-600 font-semibold">Vendor:</span><span className="font-semibold text-slate-800">{(booking as any).vendorName || '-'}</span></div>
                   </div>
                 </div>
 
@@ -958,7 +958,7 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                     <div className="grid grid-cols-[125px_1fr]"><span className="text-slate-600 font-semibold">Return Date & Time:</span><span className="font-semibold text-slate-800">
                       {new Date(currentInvoice?.rentalDetails?.returnDatetime || booking.returnDatetime).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute:'2-digit' }).toUpperCase()}
                     </span></div>
-                    <div className="grid grid-cols-[125px_1fr]"><span className="text-slate-600 font-semibold">Total Duration:</span><span className="font-semibold text-slate-800">{currentInvoice?.rentalDetails?.totalDurationDays || booking.totalDays} Days</span></div>
+                    <div className="grid grid-cols-[125px_1fr]"><span className="text-slate-600 font-semibold">Total Duration:</span><span className="font-semibold text-slate-800">{currentInvoice?.rentalDetails?.totalDurationDays || booking.daysCount || (booking as any).totalDays || 1} Days</span></div>
                   </div>
                 </div>
               </div>

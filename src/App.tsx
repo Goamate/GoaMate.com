@@ -16,10 +16,17 @@ import { BookingTracker } from './components/booking/BookingTracker';
 import { DirectBookingLanding } from './components/booking/DirectBookingLanding';
 import { VehicleDetailModal } from './components/vehicles/VehicleDetailModal';
 import { VendorPortal } from './components/vendor/VendorPortal';
+import { VendorRegisterPage } from './components/vendor/VendorRegisterPage';
+import { VendorLoginPage } from './components/vendor/VendorLoginPage';
+import { VendorPendingApprovalPage } from './components/vendor/VendorPendingApprovalPage';
+import { VendorForgotPasswordPage } from './components/vendor/VendorForgotPasswordPage';
+import { VendorResetPasswordPage } from './components/vendor/VendorResetPasswordPage';
 import { AdminPortal } from './components/admin/AdminPortal';
 import { PolicyViewer } from './components/pages/PolicyViewer';
 import { api } from './services/api';
-import { Vehicle, SiteSettings, VehicleCategory, ServiceArea } from './types';
+import { Vehicle, SiteSettings, VehicleCategory, ServiceArea, VendorApprovalStatus, VendorProfile } from './types';
+import { supabase } from './lib/supabase';
+import { getVendorProfile } from './lib/vendorAuth';
 import { AlertTriangle, X } from 'lucide-react';
 
 export default function App() {
@@ -52,9 +59,108 @@ export default function App() {
   // Direct Booking Link Token (e.g. ?token=...)
   const [directLinkToken, setDirectLinkToken] = useState<string | null>(null);
 
-  // Parse initial URL query parameters
+  // Dedicated Routes:
+  // /vendor/register, /vendor/login, /vendor/dashboard, /vendor/forgot-password, /vendor/reset-password, /vendor/pending
+  type VendorRoute = 'register' | 'login' | 'dashboard' | 'forgot-password' | 'reset-password' | 'pending' | null;
+
+  const getActiveVendorRoute = (): VendorRoute => {
+    const pathname = window.location.pathname.replace(/\/+$/, '');
+    const params = new URLSearchParams(window.location.search);
+    const routeParam = params.get('route');
+
+    if (pathname === '/vendor/register' || routeParam === '/vendor/register' || params.get('page') === 'vendor-register') {
+      return 'register';
+    }
+    if (pathname === '/vendor/login' || routeParam === '/vendor/login' || params.get('page') === 'vendor-login') {
+      return 'login';
+    }
+    if (pathname === '/vendor/dashboard' || routeParam === '/vendor/dashboard' || params.get('page') === 'vendor-dashboard') {
+      return 'dashboard';
+    }
+    if (pathname === '/vendor/forgot-password' || routeParam === '/vendor/forgot-password' || params.get('page') === 'vendor-forgot-password') {
+      return 'forgot-password';
+    }
+    if (pathname === '/vendor/reset-password' || routeParam === '/vendor/reset-password' || params.get('page') === 'vendor-reset-password') {
+      return 'reset-password';
+    }
+    if (pathname === '/vendor/pending' || routeParam === '/vendor/pending' || params.get('page') === 'vendor-pending') {
+      return 'pending';
+    }
+    return null;
+  };
+
+  const [activeVendorRoute, setActiveVendorRoute] = useState<VendorRoute>(getActiveVendorRoute);
+  const isVendorRegisterRoute = activeVendorRoute === 'register';
+
+  // Vendor session state for dashboard and pending checks
+  const [vendorSessionUser, setVendorSessionUser] = useState<any | null>(null);
+  const [vendorProfile, setVendorProfile] = useState<VendorProfile | null>(null);
+
+  // Navigation handlers for history API
+  const navigateToVendorRoute = (route: VendorRoute) => {
+    const url = route ? `/vendor/${route}` : '/';
+    window.history.pushState(null, '', url);
+    setActiveVendorRoute(route);
+    setActivePolicyPage(null);
+    setDirectLinkToken(null);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleNavigateVendorRegister = () => navigateToVendorRoute('register');
+  const handleNavigateVendorLogin = () => navigateToVendorRoute('login');
+  const handleNavigateVendorForgotPassword = () => navigateToVendorRoute('forgot-password');
+  const handleNavigateVendorDashboard = () => navigateToVendorRoute('dashboard');
+  const handleNavigateVendorPending = () => navigateToVendorRoute('pending');
+
+  const handleNavigateHome = () => {
+    if (window.location.pathname.startsWith('/vendor/')) {
+      window.history.pushState(null, '', '/');
+    }
+    setActiveVendorRoute(null);
+    setActivePolicyPage(null);
+    setDirectLinkToken(null);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // Check and listen to Supabase Auth state for vendor routes
+  useEffect(() => {
+    if (!supabase) return;
+
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (session?.user) {
+        setVendorSessionUser(session.user);
+        const profile = await getVendorProfile(session.user.id);
+        setVendorProfile(profile);
+      } else {
+        setVendorSessionUser(null);
+        setVendorProfile(null);
+      }
+    });
+
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (session?.user) {
+        setVendorSessionUser(session.user);
+        const profile = await getVendorProfile(session.user.id);
+        setVendorProfile(profile);
+      } else {
+        setVendorSessionUser(null);
+        setVendorProfile(null);
+      }
+
+      if (event === 'PASSWORD_RECOVERY') {
+        navigateToVendorRoute('reset-password');
+      }
+    });
+
+    return () => {
+      authListener?.subscription.unsubscribe();
+    };
+  }, []);
+
+  // Parse initial URL query parameters and listen for browser popstate
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    const pathname = window.location.pathname.replace(/\/+$/, '');
     const tokenParam = params.get('token');
     const trackParam = params.get('track');
     const portalParam = params.get('portal');
@@ -67,15 +173,30 @@ export default function App() {
       setTrackerInitialRef(trackParam);
       setShowTracker(true);
     }
-    if (portalParam === 'vendor') {
+    if (portalParam === 'vendor' && params.get('tab') !== 'register') {
       setShowVendorPortal(true);
-    } else if (portalParam === 'admin') {
+    }
+    if (pathname === '/admin' || portalParam === 'admin') {
       setShowAdminPortal(true);
     }
     if (policyParam && ['terms', 'cancellation', 'privacy', 'about'].includes(policyParam)) {
       setActivePolicyPage(policyParam as any);
     }
-  }, []);
+
+    const handleLocationChange = () => {
+      setActiveVendorRoute(getActiveVendorRoute());
+      const p = new URLSearchParams(window.location.search);
+      const pol = p.get('policy');
+      if (pol && ['terms', 'cancellation', 'privacy', 'about'].includes(pol)) {
+        setActivePolicyPage(pol as any);
+      } else if (!pol && activePolicyPage) {
+        setActivePolicyPage(null);
+      }
+    };
+
+    window.addEventListener('popstate', handleLocationChange);
+    return () => window.removeEventListener('popstate', handleLocationChange);
+  }, [activePolicyPage]);
 
   // Fetch Vehicles & Settings
   const fetchData = async () => {
@@ -145,7 +266,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900 selection:bg-emerald-500 selection:text-white">
+    <div id="app-container" className="min-h-screen flex flex-col bg-slate-50 text-slate-900 selection:bg-emerald-500 selection:text-white">
       {/* Maintenance Mode Banner if active */}
       {settings?.maintenanceMode && (
         <div className="bg-amber-600 text-white text-xs font-bold py-2 px-4 text-center sticky top-0 z-50 flex items-center justify-center gap-2 shadow-sm">
@@ -154,39 +275,102 @@ export default function App() {
         </div>
       )}
 
-      {/* Main Navigation Bar */}
-      <Navbar
-        currentView={activePolicyPage || 'home'}
-        onNavigateHome={() => {
-          setActivePolicyPage(null);
-          setDirectLinkToken(null);
-          window.scrollTo({ top: 0, behavior: 'smooth' });
-        }}
-        onSelectCategory={cat => {
-          setActivePolicyPage(null);
-          setDirectLinkToken(null);
-          setSelectedCategory(cat);
-          setTimeout(() => {
+      {/* Main Navigation Bar (Hidden when on standalone vendor auth / dashboard screens) */}
+      {!activeVendorRoute && (
+        <Navbar
+          currentView={activePolicyPage || 'home'}
+          onNavigateHome={handleNavigateHome}
+          onSelectCategory={cat => {
+            handleNavigateHome();
+            setSelectedCategory(cat);
+            setTimeout(() => {
+              const fleetEl = document.getElementById('fleet');
+              if (fleetEl) fleetEl.scrollIntoView({ behavior: 'smooth' });
+            }, 50);
+          }}
+          onOpenBooking={() => {
+            handleNavigateHome();
             const fleetEl = document.getElementById('fleet');
             if (fleetEl) fleetEl.scrollIntoView({ behavior: 'smooth' });
-          }, 50);
-        }}
-        onOpenBooking={() => {
-          setActivePolicyPage(null);
-          setDirectLinkToken(null);
-          const fleetEl = document.getElementById('fleet');
-          if (fleetEl) fleetEl.scrollIntoView({ behavior: 'smooth' });
-        }}
-        onOpenTracker={() => {
-          setTrackerInitialRef('');
-          setShowTracker(true);
-        }}
-        onOpenVendor={() => setShowVendorPortal(true)}
-        onOpenAdmin={() => setShowAdminPortal(true)}
-      />
+          }}
+          onOpenTracker={() => {
+            setTrackerInitialRef('');
+            setShowTracker(true);
+          }}
+          onOpenVendor={() => {
+            // If logged in as vendor and approved, go to dashboard
+            if (vendorProfile?.approval_status === 'approved') {
+              handleNavigateVendorDashboard();
+            } else if (vendorProfile?.approval_status === 'pending') {
+              handleNavigateVendorPending();
+            } else {
+              handleNavigateVendorLogin();
+            }
+          }}
+          onOpenVendorRegister={handleNavigateVendorRegister}
+          onOpenAdmin={() => setShowAdminPortal(true)}
+        />
+      )}
 
-      {/* Policy Page View (If Active) */}
-      {activePolicyPage ? (
+      {/* Main Content Area */}
+      {activeVendorRoute === 'register' ? (
+        <main className="flex-1">
+          <VendorRegisterPage
+            settings={settings}
+            onNavigateHome={handleNavigateHome}
+            onOpenVendorLogin={handleNavigateVendorLogin}
+          />
+        </main>
+      ) : activeVendorRoute === 'login' ? (
+        <main className="flex-1">
+          <VendorLoginPage
+            onNavigateHome={handleNavigateHome}
+            onNavigateRegister={handleNavigateVendorRegister}
+            onNavigateForgotPassword={handleNavigateVendorForgotPassword}
+            onLoginSuccess={(status: VendorApprovalStatus) => {
+              if (status === 'approved') {
+                handleNavigateVendorDashboard();
+              } else {
+                handleNavigateVendorPending();
+              }
+            }}
+          />
+        </main>
+      ) : activeVendorRoute === 'pending' ? (
+        <main className="flex-1">
+          <VendorPendingApprovalPage
+            profile={vendorProfile}
+            userEmail={vendorSessionUser?.email}
+            onNavigateHome={handleNavigateHome}
+            onNavigateLogin={handleNavigateVendorLogin}
+          />
+        </main>
+      ) : activeVendorRoute === 'forgot-password' ? (
+        <main className="flex-1">
+          <VendorForgotPasswordPage
+            onNavigateHome={handleNavigateHome}
+            onNavigateLogin={handleNavigateVendorLogin}
+          />
+        </main>
+      ) : activeVendorRoute === 'reset-password' ? (
+        <main className="flex-1">
+          <VendorResetPasswordPage
+            onNavigateHome={handleNavigateHome}
+            onNavigateLogin={handleNavigateVendorLogin}
+          />
+        </main>
+      ) : activeVendorRoute === 'dashboard' ? (
+        <main className="flex-1 min-h-screen bg-slate-900">
+          <VendorPortal
+            onClose={handleNavigateHome}
+            onOpenDirectLink={token => {
+              handleNavigateHome();
+              setDirectLinkToken(token);
+            }}
+            onOpenRegisterPage={handleNavigateVendorRegister}
+          />
+        </main>
+      ) : activePolicyPage ? (
         <main className="flex-1">
           <PolicyViewer page={activePolicyPage} onBack={() => setActivePolicyPage(null)} />
         </main>
@@ -205,7 +389,13 @@ export default function App() {
         /* Standard Homepage Layout */
         <main className="flex-1">
           {/* Hero Section with Quick Booking Bar */}
-          <Hero onSearch={handleHeroSearch} />
+          <Hero
+            onSearch={handleHeroSearch}
+            onOpenBooking={() => {
+              const fleetEl = document.getElementById('fleet');
+              if (fleetEl) fleetEl.scrollIntoView({ behavior: 'smooth' });
+            }}
+          />
 
           {/* Category Exploration Grid */}
           <CategoryGrid onSelectCategory={handleCategorySelect} />
@@ -255,12 +445,15 @@ export default function App() {
       {/* Footer */}
       <Footer
         onOpenPolicy={page => {
+          if (activeVendorRoute) {
+            window.history.pushState(null, '', `/?policy=${page}`);
+            setActiveVendorRoute(null);
+          }
           setActivePolicyPage(page);
           window.scrollTo({ top: 0, behavior: 'smooth' });
         }}
         onSelectCategory={cat => {
-          setActivePolicyPage(null);
-          setDirectLinkToken(null);
+          handleNavigateHome();
           setSelectedCategory(cat);
           setTimeout(() => {
             const fleetEl = document.getElementById('fleet');
@@ -268,6 +461,7 @@ export default function App() {
           }, 50);
         }}
         onOpenVendor={() => setShowVendorPortal(true)}
+        onOpenVendorRegister={handleNavigateVendorRegister}
         onOpenAdmin={() => setShowAdminPortal(true)}
         onOpenTracker={() => {
           setTrackerInitialRef('');
@@ -276,7 +470,7 @@ export default function App() {
       />
 
       {/* Floating WhatsApp Support Button (Controlled by Site Settings) */}
-      {settings?.showWhatsAppSupport !== false && <FloatingWhatsApp />}
+      {settings?.showWhatsappSupport !== false && <FloatingWhatsApp />}
 
       {/* Modal: Vehicle Details Preview */}
       {detailVehicle && (
@@ -330,6 +524,10 @@ export default function App() {
           onOpenDirectLink={token => {
             setShowVendorPortal(false);
             setDirectLinkToken(token);
+          }}
+          onOpenRegisterPage={() => {
+            setShowVendorPortal(false);
+            handleNavigateVendorRegister();
           }}
         />
       )}

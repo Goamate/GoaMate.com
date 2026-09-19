@@ -11,7 +11,7 @@ interface HeroProps {
     pickupDate: string;
     returnDate: string;
   }) => void;
-  onOpenBooking: () => void;
+  onOpenBooking?: () => void;
 }
 
 export const Hero: React.FC<HeroProps> = ({ onSearch, onOpenBooking }) => {

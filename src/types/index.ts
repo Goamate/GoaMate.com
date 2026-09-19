@@ -48,6 +48,21 @@ export interface Vehicle {
   deletedBy?: string;
 }
 
+export type VendorApprovalStatus = 'pending' | 'approved' | 'rejected' | 'suspended';
+
+export interface VendorProfile {
+  id: string;
+  user_id: string;
+  full_name: string;
+  business_name: string;
+  phone: string;
+  whatsapp: string;
+  address: string;
+  area: string;
+  approval_status: VendorApprovalStatus;
+  created_at: string;
+}
+
 export interface Vendor {
   id: string;
   userId: string;

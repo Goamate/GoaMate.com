@@ -33,13 +33,16 @@ import { StatusBadge } from '../ui/StatusBadge';
 import { getWhatsAppLink } from '../../lib/constants';
 import { InvoiceModal } from './InvoiceModal';
 import { InvoiceListView } from './InvoiceListView';
+import { supabase } from '../../lib/supabase';
+import { loginVendorWithSupabase, logoutVendor, getVendorProfile } from '../../lib/vendorAuth';
 
 interface VendorPortalProps {
   onClose: () => void;
   onOpenDirectLink: (token: string) => void;
+  onOpenRegisterPage?: () => void;
 }
 
-export const VendorPortal: React.FC<VendorPortalProps> = ({ onClose, onOpenDirectLink }) => {
+export const VendorPortal: React.FC<VendorPortalProps> = ({ onClose, onOpenDirectLink, onOpenRegisterPage }) => {
   const formatInputDate = (d: Date) => {
     const pad = (n: number) => String(n).padStart(2, '0');
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
@@ -82,6 +85,11 @@ export const VendorPortal: React.FC<VendorPortalProps> = ({ onClose, onOpenDirec
   const [viewingInvoiceBooking, setViewingInvoiceBooking] = useState<Booking | null>(null);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [copiedLinkId, setCopiedLinkId] = useState<string | null>(null);
+
+  // Account removal state
+  const [showDeleteAccountModal, setShowDeleteAccountModal] = useState<boolean>(false);
+  const [deleteAccountConfirmed, setDeleteAccountConfirmed] = useState<boolean>(false);
+  const [isDeletingAccount, setIsDeletingAccount] = useState<boolean>(false);
 
   // Add Vehicle Form State
   const [newVehicle, setNewVehicle] = useState<Partial<Vehicle>>({
@@ -147,12 +155,52 @@ export const VendorPortal: React.FC<VendorPortalProps> = ({ onClose, onOpenDirec
     }
   }, [token]);
 
+  // Check if Supabase session is already present
+  useEffect(() => {
+    if (!supabase) return;
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (session?.user) {
+        const profile = await getVendorProfile(session.user.id);
+        if (profile) {
+          // If we don't have a token, try API session with vendor email
+          if (!token) {
+            try {
+              const res = await api.vendorLogin(session.user.email || '', 'supa_auth_bypass').catch(() => null);
+              if (res?.token) {
+                setToken(res.token);
+                localStorage.setItem('goamate_vendor_token', res.token);
+              }
+            } catch {
+              // Ignore
+            }
+          }
+        }
+      }
+    });
+  }, []);
+
   // Login Action
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
       setLoading(true);
       setActionError(null);
+
+      // Attempt Supabase Auth login first if available
+      if (supabase) {
+        try {
+          const supaRes = await loginVendorWithSupabase(loginEmail, loginPassword);
+          if (supaRes.profile && supaRes.profile.approval_status !== 'approved') {
+            setActionError(`Your vendor account status is ${supaRes.profile.approval_status}. Pending administrator approval.`);
+            setLoading(false);
+            return;
+          }
+        } catch (supaErr: any) {
+          console.warn('[VendorPortal] Supabase auth attempt:', supaErr.message);
+          // Fall through to standard vendor login if user created via legacy route
+        }
+      }
+
       const res = await api.vendorLogin(loginEmail, loginPassword);
       setToken(res.token);
       localStorage.setItem('goamate_vendor_token', res.token);
@@ -181,8 +229,9 @@ export const VendorPortal: React.FC<VendorPortalProps> = ({ onClose, onOpenDirec
   };
 
   // Logout Action
-  const handleLogout = () => {
+  const handleLogout = async () => {
     localStorage.removeItem('goamate_vendor_token');
+    await logoutVendor();
     setToken(null);
     setVendor(null);
     setLoginEmail('');
@@ -203,6 +252,23 @@ export const VendorPortal: React.FC<VendorPortalProps> = ({ onClose, onOpenDirec
       setActionError(err.message || 'Failed to create vehicle');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Permanently delete vendor account and complete fleet data
+  const handleDeleteAccount = async () => {
+    if (!token) return;
+    try {
+      setIsDeletingAccount(true);
+      setActionError(null);
+      await api.deleteVendorAccount(token);
+      setShowDeleteAccountModal(false);
+      setDeleteAccountConfirmed(false);
+      handleLogout();
+    } catch (err: any) {
+      setActionError(err.message || 'Failed to remove vendor data');
+    } finally {
+      setIsDeletingAccount(false);
     }
   };
 
@@ -338,15 +404,28 @@ export const VendorPortal: React.FC<VendorPortalProps> = ({ onClose, onOpenDirec
                 {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <span>Login to Fleet Dashboard</span>}
               </button>
 
-              <div className="pt-2 text-center text-xs text-slate-600">
-                <span>Want to list your fleet on GoaMate? </span>
-                <button
-                  type="button"
-                  onClick={() => setIsRegistering(true)}
-                  className="font-bold text-emerald-700 hover:underline"
-                >
-                  Register Partner Account
-                </button>
+              <div className="pt-2 text-center text-xs text-slate-600 space-y-2">
+                <div>
+                  <span>Want to list your fleet on GoaMate? </span>
+                  <button
+                    type="button"
+                    onClick={() => setIsRegistering(true)}
+                    className="font-bold text-emerald-700 hover:underline cursor-pointer"
+                  >
+                    Quick Register Here
+                  </button>
+                </div>
+                {onOpenRegisterPage && (
+                  <div>
+                    <button
+                      type="button"
+                      onClick={onOpenRegisterPage}
+                      className="inline-flex items-center gap-1 font-bold text-emerald-600 hover:text-emerald-800 text-[11px] underline cursor-pointer"
+                    >
+                      <span>Or open full Partner Registration Page (/vendor/register) →</span>
+                    </button>
+                  </div>
+                )}
               </div>
             </form>
           ) : (
@@ -1090,6 +1169,74 @@ export const VendorPortal: React.FC<VendorPortalProps> = ({ onClose, onOpenDirec
               />
             </div>
           )}
+
+          {/* ================= TAB 6: SETTINGS & DANGER ZONE ================= */}
+          {activeTab === 'settings' && (
+            <div className="space-y-6">
+              {/* Partner Profile Summary */}
+              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+                <h3 className="font-extrabold text-slate-900 text-sm flex items-center gap-2">
+                  <User className="w-4 h-4 text-emerald-600" />
+                  <span>Vendor Partner Profile</span>
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                    <span className="text-slate-500 block mb-1">Business / Agency Name</span>
+                    <span className="font-bold text-slate-800 text-sm">{vendor.businessName}</span>
+                  </div>
+                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                    <span className="text-slate-500 block mb-1">Contact Person</span>
+                    <span className="font-bold text-slate-800 text-sm">{vendor.vendorName}</span>
+                  </div>
+                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                    <span className="text-slate-500 block mb-1">Registered Phone</span>
+                    <span className="font-bold text-slate-800">{vendor.phone}</span>
+                  </div>
+                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                    <span className="text-slate-500 block mb-1">Registered Email</span>
+                    <span className="font-bold text-slate-800">{vendor.email}</span>
+                  </div>
+                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 md:col-span-2">
+                    <span className="text-slate-500 block mb-1">Primary Operational Hub / Location</span>
+                    <span className="font-bold text-slate-800">{vendor.serviceLocation}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Danger Zone: Remove Complete Vendor Data */}
+              <div className="bg-white p-6 rounded-2xl border-2 border-rose-200 shadow-xs space-y-4">
+                <div className="flex items-center gap-2 text-rose-700">
+                  <AlertTriangle className="w-5 h-5 text-rose-600" />
+                  <h3 className="font-extrabold text-base">Danger Zone: Remove Complete Vendor Data</h3>
+                </div>
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  Looking to leave GoaMate and completely erase your business presence? This option allows you to permanently remove your vendor profile, all registered fleet vehicles ({vehiclesList.length}), direct links, and database records from this website.
+                </p>
+                <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 text-xs text-rose-900 space-y-2">
+                  <div className="font-bold">What happens when you delete vendor complete data:</div>
+                  <ul className="list-disc list-inside space-y-1 text-[11px] text-rose-800">
+                    <li>All {vehiclesList.length} fleet vehicles are permanently wiped from public search and booking catalogs.</li>
+                    <li>All direct customer booking links are invalidated immediately.</li>
+                    <li>Your vendor account and credentials are deleted from the website and Supabase database.</li>
+                    <li>This action cannot be undone.</li>
+                  </ul>
+                </div>
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowDeleteAccountModal(true);
+                      setDeleteAccountConfirmed(false);
+                    }}
+                    className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-md shadow-rose-200"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    <span>Delete My Vendor Account & Complete Data</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Modal: Add Vehicle */}
@@ -1414,6 +1561,75 @@ export const VendorPortal: React.FC<VendorPortalProps> = ({ onClose, onOpenDirec
               setSelectedInvoice(updInv);
             }}
           />
+        )}
+
+        {/* Modal: Vendor Self-Service Complete Data Removal */}
+        {showDeleteAccountModal && (
+          <div className="fixed inset-0 z-60 bg-slate-900/80 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 border-2 border-rose-600">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                <h3 className="font-extrabold text-rose-700 text-base flex items-center gap-2">
+                  <Trash2 className="w-5 h-5 text-rose-600" /> Remove Complete Data
+                </h3>
+                <button
+                  onClick={() => {
+                    setShowDeleteAccountModal(false);
+                    setDeleteAccountConfirmed(false);
+                  }}
+                  className="text-slate-400 hover:text-slate-600"
+                >
+                  <XCircle className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 text-xs text-rose-950 space-y-1.5">
+                <strong className="block font-extrabold text-sm">Permanent Erasure Confirmation</strong>
+                <p>
+                  You are about to permanently remove <strong>{vendor.businessName}</strong> and all associated fleet vehicles ({vehiclesList.length}) from GoaMate.
+                </p>
+              </div>
+
+              <label className="flex items-start gap-2.5 text-xs font-semibold text-slate-800 cursor-pointer select-none bg-slate-50 p-3 rounded-xl border border-slate-200">
+                <input
+                  type="checkbox"
+                  checked={deleteAccountConfirmed}
+                  onChange={(e) => setDeleteAccountConfirmed(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 rounded text-rose-600 focus:ring-rose-500 border-slate-300"
+                />
+                <span>I confirm that I want to permanently delete my vendor account and all fleet data from this website.</span>
+              </label>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  onClick={() => {
+                    setShowDeleteAccountModal(false);
+                    setDeleteAccountConfirmed(false);
+                  }}
+                  disabled={isDeletingAccount}
+                  className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDeleteAccount}
+                  disabled={!deleteAccountConfirmed || isDeletingAccount}
+                  className="px-5 py-2 bg-rose-600 hover:bg-rose-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold shadow-lg shadow-rose-200 flex items-center gap-2"
+                >
+                  {isDeletingAccount ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Deleting All Data...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Permanently Delete All Data</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </div>
